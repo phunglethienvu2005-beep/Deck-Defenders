@@ -52,11 +52,11 @@ Hệ thống tiếp cận độ khó như một vòng điều khiển phản h�
 
 | Chỉ số | Cách đo lường | Trước (Baseline / Kế hoạch) | Sau (Kết quả thực tế) | Ngày đo | Bằng chứng |
 
-| :--- | :--- | :--- | :--- | :--- | :--- |
+| --- | --- | --- | --- | --- | --- |
 
-| **1. Tỉ lệ thắng màn 3 (%)** | Thống kê tự động từ hệ thống Telemetry lưu log khi hoàn thành màn 3 | Kế hoạch: đo nhóm A (độ khó cố định), W5–W6 | *(Để trống)* | Nhóm A: W5–W6<br>Nhóm B: 27/11–03/12 | Log file JSON / Google Sheets |
+| **1. Tỉ lệ thắng màn 3 (%)** | Thống kê tự động từ hệ thống Telemetry lưu log khi hoàn thành màn 3 | Kế hoạch: đo nhóm A (độ khó cố định), W5–W6 | *(Để trống)* | Nhóm A: W5–W6 / Nhóm B: 27/11–03/12 | Log file JSON / Google Sheets |
 
-| **2. Tỉ lệ bỏ giữa màn (%)** | Ghi nhận sự kiện người chơi bấm thoát/tắt game khi trận chưa kết thúc | Kế hoạch: đo nhóm A, W5–W6 | *(Để trống)* | Nhóm A: W5–W6<br>Nhóm B: 27/11–03/12 | Log file JSON / Google Sheets |
+| **2. Tỉ lệ bỏ giữa màn (%)** | Ghi nhận sự kiện người chơi bấm thoát/tắt game khi trận chưa kết thúc | Kế hoạch: đo nhóm A, W5–W6 | *(Để trống)* | Nhóm A: W5–W6 / Nhóm B: 27/11–03/12 | Log file JSON / Google Sheets |
 
 
 
