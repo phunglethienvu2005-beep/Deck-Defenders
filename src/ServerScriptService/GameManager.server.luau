@@ -281,6 +281,11 @@ local function runWave(waveNum)
     while GameState.phase == "WaveActive" and elapsed < timeout do
         task.wait(POLL_RATE)
         elapsed = elapsed + POLL_RATE
+        if #getPlayersInBattle() == 0 then
+            GameState.phase = "GameOver"
+            RE_GameOver:FireAllClients(GameState.currentWave)
+            break
+        end
         if GameState.enemyCount <= 0 and elapsed > 5 then
             task.wait(1)
             if GameState.enemyCount <= 0 then
@@ -298,6 +303,61 @@ local function runWave(waveNum)
 end
 
 ------------------------------------------------------------------------
+-- BATTLE / LOBBY HELPERS
+------------------------------------------------------------------------
+local BATTLE_CENTER = Vector3.new(700, 0, -490)
+local BATTLE_RADIUS = 180
+local LOBBY_SPAWN_CF = CFrame.new(460.14, 12, -72.07)
+
+function isPlayerInBattle(player)
+    local char = player.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return false end
+    local flatPos = Vector3.new(root.Position.X, 0, root.Position.Z)
+    return (flatPos - BATTLE_CENTER).Magnitude <= BATTLE_RADIUS
+end
+
+function getPlayersInBattle()
+    local list = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if isPlayerInBattle(p) then table.insert(list, p) end
+    end
+    return list
+end
+
+local function cleanupBattle()
+    local towers = workspace:FindFirstChild("Towers")
+    if towers then towers:ClearAllChildren() end
+
+    local enemies = workspace:FindFirstChild("Enemies")
+    if enemies then enemies:ClearAllChildren() end
+
+    local vfx = workspace:FindFirstChild("VFX")
+    if vfx then vfx:ClearAllChildren() end
+
+    GameState.lives         = GameState.maxLives
+    GameState.currentWave   = 0
+    GameState.enemyCount    = 0
+    GameState.activeEnemies = {}
+    GameState.phase         = "Lobby"
+    RE_LivesChanged:FireAllClients(GameState.lives, GameState.maxLives)
+end
+
+local function resetAndReturnToLobby()
+    task.wait(5)
+    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+    local locEvent = remotes and remotes:FindFirstChild("LocationChanged")
+    for _, p in ipairs(Players:GetPlayers()) do
+        if isPlayerInBattle(p) then
+            local char = p.Character
+            if char then char:PivotTo(LOBBY_SPAWN_CF) end
+            if locEvent then locEvent:FireClient(p, "Lobby") end
+        end
+    end
+    cleanupBattle()
+end
+
+------------------------------------------------------------------------
 -- MAIN GAME LOOP
 ------------------------------------------------------------------------
 local function startGame()
@@ -308,7 +368,7 @@ local function startGame()
     addGoldAll(0)
 
     for waveNum = 1, GameState.totalWaves do
-        if GameState.phase == "GameOver" then break end
+        if GameState.phase == "GameOver" or #getPlayersInBattle() == 0 then break end
         GameState.currentWave = waveNum
 
         local waveData = WaveConfig.GetWave(waveNum)
@@ -317,23 +377,28 @@ local function startGame()
         print(string.format("[GameManager] Next wave in %ds...", waitTime))
         task.wait(waitTime)
 
-        if GameState.phase == "GameOver" then break end
+        if GameState.phase == "GameOver" or #getPlayersInBattle() == 0 then break end
 
         runWave(waveNum)
 
-        if waveNum < GameState.totalWaves and GameState.phase ~= "GameOver" then
+        if waveNum < GameState.totalWaves and GameState.phase ~= "GameOver" and #getPlayersInBattle() > 0 then
             task.wait(3)
         end
     end
 
-    if GameState.phase ~= "GameOver" then
+    if GameState.phase ~= "GameOver" and #getPlayersInBattle() > 0 then
         GameState.phase = "GameWin"
         print("[GameManager] GAME WIN! All waves cleared.")
         RE_GameWin:FireAllClients(GameState.totalWaves)
     end
 end
 
-print("[GameManager] Initializing Tower Defense GameManager with Zombie waves...")
-task.delay(5, function()
-    startGame()
+task.spawn(function()
+    while true do
+        task.wait(1)
+        if #getPlayersInBattle() > 0 and GameState.phase == "Lobby" then
+            startGame()
+            resetAndReturnToLobby()
+        end
+    end
 end)

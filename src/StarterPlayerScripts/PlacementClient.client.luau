@@ -249,6 +249,10 @@ local function checkPlacementValidity(targetPos)
     end
 
     local flatTarget = Vector3.new(targetPos.X, 0, targetPos.Z)
+    local flatBattle = Vector3.new(700, 0, -490)
+    if (flatTarget - flatBattle).Magnitude > 180 then
+        return false, "Không thể đặt tháp ở Lobby"
+    end
 
     -- 1. Kiem tra khoang cach toi tat ca Tower hien co (< 5 studs)
     local towersFolder = workspace:FindFirstChild("Towers")
@@ -290,14 +294,11 @@ RunService.RenderStepped:Connect(function()
 
     local pos, hit = getGroundPosition()
     if pos and hit then
-        -- Chuan hoa Y de dat ngay tren mat dat (HRP cao khoang 3.2 studs so voi Baseplate)
-        local snapPos = Vector3.new(pos.X, pos.Y + 3.2, pos.Z)
+        -- Dat ngay tren mat dat (Pivot model da duoc chinh ve dung day ban chan)
+        local snapPos = pos
         currentSnapPos = snapPos
 
-        local hrp = ghostModel:FindFirstChild("HumanoidRootPart")
-        if hrp then
-            ghostModel:SetPrimaryPartCFrame(CFrame.new(snapPos))
-        end
+        ghostModel:PivotTo(CFrame.new(snapPos))
         rangeCircle.CFrame = CFrame.new(pos.X, pos.Y + 0.1, pos.Z) * CFrame.Angles(0, 0, math.rad(90))
 
         -- Kiem tra tinh hop le
@@ -315,8 +316,7 @@ RunService.RenderStepped:Connect(function()
     else
         currentValid = false
         currentSnapPos = nil
-        local hrp = ghostModel:FindFirstChild("HumanoidRootPart")
-        if hrp then ghostModel:SetPrimaryPartCFrame(CFrame.new(0, -500, 0)) end
+        ghostModel:PivotTo(CFrame.new(0, -500, 0))
         rangeCircle.CFrame = CFrame.new(0, -500, 0)
     end
 end)
