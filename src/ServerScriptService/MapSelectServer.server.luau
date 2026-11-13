@@ -29,6 +29,8 @@ local DIFFICULTY = {
 	Nightmare = { label = "Nightmare", hpMult = 4.0, speedMult = 2.0, yenMult = 3.0 },
 }
 
+_G.CurrentDifficulty = DIFFICULTY.Easy
+
 local BATTLE_CENTER = Vector3.new(700, 0, -490)
 local BATTLE_RADIUS = 180
 local touchDebounce = {}
@@ -56,8 +58,10 @@ local function isInBattle(player)
 	return (flat - BATTLE_CENTER).Magnitude <= BATTLE_RADIUS
 end
 
+local connectedParts = {}
 local function connectTrigger(part)
-	if not part:IsA("BasePart") then return end
+	if not part:IsA("BasePart") or connectedParts[part] then return end
+	connectedParts[part] = true
 	part.Touched:Connect(function(hit)
 		local player = Players:GetPlayerFromCharacter(hit.Parent)
 		if not player then return end
@@ -69,21 +73,18 @@ local function connectTrigger(part)
 	end)
 end
 
-local playTrigger = workspace:WaitForChild("MainLobby", 10)
-if playTrigger then
-	local function findTriggers(root)
-		for _, desc in ipairs(root:GetDescendants()) do
-			if desc.Name == "PlayTrigger" or desc.Name == "LobbyZone" then
-				connectTrigger(desc)
-			end
+local mainLobby = workspace:WaitForChild("MainLobby", 10)
+if mainLobby then
+	for _, desc in ipairs(mainLobby:GetDescendants()) do
+		if desc.Name == "PlayTrigger" and desc:IsA("BasePart") then
+			connectTrigger(desc)
 		end
-		root.DescendantAdded:Connect(function(desc)
-			if desc.Name == "PlayTrigger" or desc.Name == "LobbyZone" then
-				connectTrigger(desc)
-			end
-		end)
 	end
-	findTriggers(playTrigger)
+	mainLobby.DescendantAdded:Connect(function(desc)
+		if desc.Name == "PlayTrigger" and desc:IsA("BasePart") then
+			connectTrigger(desc)
+		end
+	end)
 end
 
 RE_StartBattle.OnServerEvent:Connect(function(player, mapName, diffKey)
@@ -100,8 +101,8 @@ RE_StartBattle.OnServerEvent:Connect(function(player, mapName, diffKey)
 	local char = player.Character
 	if not char or not char:FindFirstChild("HumanoidRootPart") then return end
 
+	_G.CurrentDifficulty = diffData
 	char:PivotTo(mapData.spawnCF)
 	RE_LocationChanged:FireClient(player, "Battle")
 	RE_BattleStarted:FireClient(player, mapName, diffKey, diffData)
 end)
-

@@ -165,13 +165,25 @@ local function getMotor(model, name)
     end
 end
 
-local origC0    = setmetatable({}, { __mode = "k" })
 local skillBusy = setmetatable({}, { __mode = "k" })
 local swingBusy = setmetatable({}, { __mode = "k" })
 
-local function getOrig(motor)
-    if not origC0[motor] then origC0[motor] = motor.C0 end
-    return origC0[motor]
+local function saveOriginalC0(towerModel)
+    for _, d in ipairs(towerModel:GetDescendants()) do
+        if d:IsA("Motor6D") then
+            if not d:GetAttribute("BaseC0") then
+                d:SetAttribute("BaseC0", d.C0)
+            end
+        end
+    end
+end
+
+local function getBaseC0(motor)
+    if not motor then return nil end
+    local saved = motor:GetAttribute("BaseC0")
+    if saved then return saved end
+    motor:SetAttribute("BaseC0", motor.C0)
+    return motor.C0
 end
 
 local function tweenNumber(duration, style, dir, onStep)
@@ -187,7 +199,8 @@ end
 
 local function tweenJoint(joint, cf, t, style, dir)
     if joint and cf then
-        TweenService:Create(joint, TweenInfo.new(t, style or Enum.EasingStyle.Quint, dir or Enum.EasingDirection.Out), { C0 = cf }):Play()
+        local dur = (type(t) == "number" and t > 0) and t or 0.3
+        TweenService:Create(joint, TweenInfo.new(dur, style or Enum.EasingStyle.Quint, dir or Enum.EasingDirection.Out), { C0 = cf }):Play()
     end
 end
 
@@ -200,8 +213,8 @@ local function playAttackSwing(model)
     swingBusy[model] = true
     task.delay(0.6, function() swingBusy[model] = nil end)
 
-    local origRS  = getOrig(rs)
-    local origWST = wst and getOrig(wst)
+    local origRS  = getBaseC0(rs)
+    local origWST = wst and getBaseC0(wst)
 
     local SWING_UP = origRS * CFrame.Angles(-math.rad(100), 0, math.rad(30))
     local SWING_DN = origRS * CFrame.Angles(math.rad(40),   0, -math.rad(10))
@@ -235,42 +248,47 @@ local function playCrimsonSkill(model, onImpact)
     skillBusy[model] = true
     while swingBusy[model] do task.wait() end
 
-    local oRS, oRoot = getOrig(rs), getOrig(root)
-    local oLS  = ls  and getOrig(ls)
-    local oWST = wst and getOrig(wst)
+    local oRS   = getBaseC0(rs)
+    local oRoot = getBaseC0(root)
+    local oLS   = ls  and getBaseC0(ls)
+    local oWST  = wst and getBaseC0(wst)
 
     local ARMS_UP = CFrame.Angles(-math.rad(165), 0, 0)
     local ARMS_DN = CFrame.Angles( math.rad(15),  0, 0)
 
-    -- 1) gio tay len + lon 1 vong tren khong
-    tweenJoint(rs, oRS * ARMS_UP, 0.15, Enum.EasingStyle.Quad)
-    tweenJoint(ls, oLS and oLS * ARMS_UP, 0.15, Enum.EasingStyle.Quad)
+    pcall(function()
+        -- 1) gio tay len + lon 1 vong tren khong
+        tweenJoint(rs, oRS * ARMS_UP, 0.15, Enum.EasingStyle.Quad)
+        if ls and oLS then tweenJoint(ls, oLS * ARMS_UP, 0.15, Enum.EasingStyle.Quad) end
 
-    tweenNumber(0.5, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, function(a)
-        if not root.Parent then return end
-        local lift = math.sin(a * math.pi) * 3.5
-        root.C0 = CFrame.new(0, lift, 0) * oRoot * CFrame.Angles(-a * math.pi * 2, 0, 0)
+        tweenNumber(0.4, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, function(a)
+            if not root.Parent then return end
+            local lift = math.sin(a * math.pi) * 3.5
+            root.C0 = CFrame.new(0, lift, 0) * oRoot * CFrame.Angles(-a * math.pi * 2, 0, 0)
+        end)
+        root.C0 = oRoot
+
+        -- 2) chem thang xuong
+        tweenJoint(rs,  oRS * ARMS_DN, 0.1, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+        if ls and oLS then tweenJoint(ls, oLS * ARMS_DN, 0.1, Enum.EasingStyle.Quint, Enum.EasingDirection.In) end
+        if wst and oWST then tweenJoint(wst, oWST * CFrame.Angles(-math.rad(25), 0, 0), 0.1, Enum.EasingStyle.Quint, Enum.EasingDirection.In) end
+        task.wait(0.1)
+        onImpact()
+        task.wait(0.35)
+
+        -- 3) tro ve tu the cu
+        tweenJoint(rs,  oRS, 0.25)
+        if ls and oLS then tweenJoint(ls, oLS, 0.25) end
+        if wst and oWST then tweenJoint(wst, oWST, 0.25) end
+        task.wait(0.25)
     end)
-    root.C0 = oRoot
 
-    -- 2) chem thang xuong
-    tweenJoint(rs,  oRS * ARMS_DN, 0.1, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-    tweenJoint(ls,  oLS and oLS * ARMS_DN, 0.1, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-    tweenJoint(wst, oWST and oWST * CFrame.Angles(-math.rad(25), 0, 0), 0.1, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-    task.wait(0.1)
-    onImpact()
-    task.wait(0.35)
-
-    -- 3) tro ve tu the cu
-    tweenJoint(rs,  oRS)
-    tweenJoint(ls,  oLS)
-    tweenJoint(wst, oWST)
-    task.wait(0.3)
-
-    rs.C0 = oRS
-    if ls  then ls.C0  = oLS  end
-    if wst then wst.C0 = oWST end
-    root.C0 = oRoot
+    if model.Parent then
+        rs.C0 = oRS
+        if ls  and oLS  then ls.C0  = oLS  end
+        if wst and oWST then wst.C0 = oWST end
+        root.C0 = oRoot
+    end
     skillBusy[model] = nil
 end
 
@@ -284,36 +302,38 @@ local function playIceSkill(model, onImpact)
     skillBusy[model] = true
     while swingBusy[model] do task.wait() end
 
-    local oRS   = getOrig(rs)
-    local oLS   = ls   and getOrig(ls)
-    local oWST  = wst  and getOrig(wst)
-    local oRoot = root and getOrig(root)
+    local oRS   = getBaseC0(rs)
+    local oLS   = ls   and getBaseC0(ls)
+    local oWST  = wst  and getBaseC0(wst)
+    local oRoot = root and getBaseC0(root)
 
-    -- 1) lay da: keo nam dam ra sau/len cao, ngua nguoi
-    tweenJoint(rs,   oRS * CFrame.Angles(-math.rad(150), 0, math.rad(10)), 0.3, Enum.EasingStyle.Back)
-    tweenJoint(ls,   oLS and oLS * CFrame.Angles(math.rad(25), 0, -math.rad(10)), 0.3, Enum.EasingStyle.Back)
-    tweenJoint(wst,  oWST and oWST * CFrame.Angles(math.rad(12), 0, 0), 0.3, Enum.EasingStyle.Back)
-    task.wait(0.3)
+    pcall(function()
+        -- 1) lay da: keo nam dam ra sau/len cao, ngua nguoi
+        tweenJoint(rs,   oRS * CFrame.Angles(-math.rad(150), 0, math.rad(10)), 0.25, Enum.EasingStyle.Back)
+        if ls and oLS then tweenJoint(ls, oLS * CFrame.Angles(math.rad(25), 0, -math.rad(10)), 0.25, Enum.EasingStyle.Back) end
+        if wst and oWST then tweenJoint(wst, oWST * CFrame.Angles(math.rad(12), 0, 0), 0.25, Enum.EasingStyle.Back) end
+        task.wait(0.25)
 
-    -- 2) dam xuong dat
-    tweenJoint(rs,   oRS * CFrame.Angles(-math.rad(15), 0, 0), 0.12, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-    tweenJoint(wst,  oWST and oWST * CFrame.Angles(-math.rad(35), 0, 0), 0.12, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-    tweenJoint(root, oRoot and CFrame.new(0, -0.8, 0) * oRoot, 0.12, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
-    task.wait(0.12)
-    onImpact()
-    task.wait(0.4)
+        -- 2) dam xuong dat (chi nghieng eo & tay, giu nguyen root.C0 de khong bi lun dat)
+        tweenJoint(rs,   oRS * CFrame.Angles(-math.rad(15), 0, 0), 0.12, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+        if wst and oWST then tweenJoint(wst, oWST * CFrame.Angles(-math.rad(35), 0, 0), 0.12, Enum.EasingStyle.Quint, Enum.EasingDirection.In) end
+        task.wait(0.12)
+        onImpact()
+        task.wait(0.35)
 
-    -- 3) dung day
-    tweenJoint(rs,   oRS)
-    tweenJoint(ls,   oLS)
-    tweenJoint(wst,  oWST)
-    tweenJoint(root, oRoot)
-    task.wait(0.35)
+        -- 3) dung day
+        tweenJoint(rs,   oRS, 0.25)
+        if ls and oLS then tweenJoint(ls, oLS, 0.25) end
+        if wst and oWST then tweenJoint(wst, oWST, 0.25) end
+        task.wait(0.25)
+    end)
 
-    rs.C0 = oRS
-    if ls   then ls.C0   = oLS   end
-    if wst  then wst.C0  = oWST  end
-    if root then root.C0 = oRoot end
+    if model.Parent then
+        rs.C0 = oRS
+        if ls   and oLS   then ls.C0   = oLS   end
+        if wst  and oWST  then wst.C0  = oWST  end
+        if root and oRoot then root.C0 = oRoot end
+    end
     skillBusy[model] = nil
 end
 
@@ -560,6 +580,7 @@ end
 -- SETUP TOWER PARTS
 ------------------------------------------------------------------------
 local function setupTowerParts(towerModel)
+    saveOriginalC0(towerModel)
     for _, part in ipairs(towerModel:GetDescendants()) do
         if part:IsA("BasePart") then
             if part.Name == "HumanoidRootPart" then
@@ -638,6 +659,11 @@ end
 -- SERVER: NHAN LENH DAT TOWER (ANTI-OVERLAP < 5 STUDS)
 ------------------------------------------------------------------------
 RE_Place.OnServerEvent:Connect(function(player, unitName, placeCFrame)
+    if not _G.BattleActive then
+        warn(string.format("[TowerServer] %s rejected: Match has not started yet (press Start first)", player.Name))
+        return
+    end
+
     local stats = TOWER_STATS[unitName]
     if not stats then warn("[TowerServer] Unknown unit: "..tostring(unitName)); return end
 

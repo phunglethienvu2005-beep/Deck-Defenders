@@ -35,6 +35,16 @@ local RE_GoldChanged  = getOrCreate(RemoteFolder, "RemoteEvent",    "GoldChanged
 local RE_GameOver     = getOrCreate(RemoteFolder, "RemoteEvent",    "GameOver")
 local RE_GameWin      = getOrCreate(RemoteFolder, "RemoteEvent",    "GameWin")
 local RF_GetGameState = getOrCreate(RemoteFolder, "RemoteFunction", "GetGameState")
+local RE_RequestStartMatch = getOrCreate(RemoteFolder, "RemoteEvent", "RequestStartMatch")
+local RE_MatchCountdown    = getOrCreate(RemoteFolder, "RemoteEvent", "MatchCountdown")
+local RE_MatchStarted      = getOrCreate(RemoteFolder, "RemoteEvent", "MatchStarted")
+local RE_ResetBattleUI     = getOrCreate(RemoteFolder, "RemoteEvent", "ResetBattleUI")
+
+local BattleActiveValue    = getOrCreate(ReplicatedStorage, "BoolValue", "BattleActive")
+BattleActiveValue.Value    = false
+_G.BattleActive            = false
+
+local startMatchRequested  = false
 
 local EnemiesFolder   = getOrCreate(workspace, "Folder", "Enemies")
 
@@ -179,38 +189,27 @@ local function spawnEnemy(batchData, waveNum)
     hrp.CanTouch = false
 
     -- Chuan hoa Humanoid
-    humanoid.MaxHealth = batchData.health or 125
-    humanoid.Health = batchData.health or 125
-    humanoid.WalkSpeed = batchData.speed or 10
+    local diff = _G.CurrentDifficulty or {}
+    local hpMult = diff.hpMult or 1
+    local spdMult = diff.speedMult or 1
+    humanoid.MaxHealth = (batchData.health or 125) * hpMult
+    humanoid.Health = (batchData.health or 125) * hpMult
+    humanoid.WalkSpeed = (batchData.speed or 10) * spdMult
     humanoid.BreakJointsOnDeath = false
     humanoid.RequiresNeck = false
     humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOn
     humanoid.DisplayName = batchData.isBoss and "BOSS ZOMBIE" or "Zombie"
 
-    -- Dam bao tat ca bo phan duoc weld chat vao HRP
+    -- Dam bao tat ca bo phan khong collide va khong bi anchored (giu nguyen Motor6D de chay animation buoc di)
     for _, part in ipairs(model:GetDescendants()) do
         if part:IsA("BasePart") then
             part.CanCollide = false
             part.CanTouch = false
             if part ~= hrp then
                 part.Anchored = false
-                local hasWeld = false
-                for _, w in ipairs(part:GetChildren()) do
-                    if w:IsA("WeldConstraint") and (w.Part0 == hrp or w.Part1 == hrp) then hasWeld = true; break end
-                end
-                if not hasWeld then
-                    for _, w in ipairs(hrp:GetChildren()) do
-                        if w:IsA("WeldConstraint") and (w.Part0 == part or w.Part1 == part) then hasWeld = true; break end
-                    end
-                end
-                if not hasWeld then
-                    local wc = Instance.new("WeldConstraint")
-                    wc.Name = "Weld_" .. part.Name
-                    wc.Part0 = hrp
-                    wc.Part1 = part
-                    wc.Parent = hrp
-                end
             end
+        elseif part:IsA("WeldConstraint") or (part:IsA("Weld") and not part:IsA("Motor6D")) then
+            part:Destroy()
         end
     end
 
@@ -330,7 +329,12 @@ local function cleanupBattle()
     if towers then towers:ClearAllChildren() end
 
     local enemies = workspace:FindFirstChild("Enemies")
-    if enemies then enemies:ClearAllChildren() end
+    if enemies then
+        for _, obj in ipairs(enemies:GetChildren()) do
+            EnemyMover.StopMoving(obj)
+            obj:Destroy()
+        end
+    end
 
     local vfx = workspace:FindFirstChild("VFX")
     if vfx then vfx:ClearAllChildren() end
@@ -340,8 +344,20 @@ local function cleanupBattle()
     GameState.enemyCount    = 0
     GameState.activeEnemies = {}
     GameState.phase         = "Lobby"
+    BattleActiveValue.Value = false
+    _G.BattleActive         = false
+    startMatchRequested     = false
     RE_LivesChanged:FireAllClients(GameState.lives, GameState.maxLives)
+    RE_ResetBattleUI:FireAllClients()
+    print("[GameManager] Battle cleaned up and reset to Lobby.")
 end
+
+RE_RequestStartMatch.OnServerEvent:Connect(function(player)
+    if isPlayerInBattle(player) and GameState.phase == "WaitingForStart" then
+        print(string.format("[GameManager] %s requested to START match!", player.Name))
+        startMatchRequested = true
+    end
+end)
 
 local function resetAndReturnToLobby()
     task.wait(5)
@@ -361,21 +377,69 @@ end
 -- MAIN GAME LOOP
 ------------------------------------------------------------------------
 local function startGame()
-    print("[GameManager] Game Started! Total waves: " .. GameState.totalWaves)
-    GameState.lives       = GameState.maxLives
-    GameState.currentWave = 0
+    print("[GameManager] Players entered Battle area. Waiting for START button...")
+    GameState.lives         = GameState.maxLives
+    GameState.currentWave   = 0
+    GameState.phase         = "WaitingForStart"
+    BattleActiveValue.Value = false
+    _G.BattleActive         = false
+    startMatchRequested     = false
     RE_LivesChanged:FireAllClients(GameState.lives, GameState.maxLives)
     addGoldAll(0)
+
+    -- Gui tin hieu hien nut START cho client
+    RE_ResetBattleUI:FireAllClients()
+
+    -- Cho den khi co nguoi bam nut START
+    while GameState.phase == "WaitingForStart" and #getPlayersInBattle() > 0 do
+        if startMatchRequested then
+            startMatchRequested = false
+            break
+        end
+        task.wait(0.2)
+    end
+
+    if #getPlayersInBattle() == 0 or GameState.phase == "GameOver" then
+        GameState.phase = "Lobby"
+        BattleActiveValue.Value = false
+        _G.BattleActive = false
+        return
+    end
+
+    -- DEM NGUOC 3 GIAY
+    GameState.phase = "Countdown"
+    print("[GameManager] Starting 3-second countdown...")
+    for count = 3, 1, -1 do
+        print(string.format("[GameManager] Countdown: %d...", count))
+        RE_MatchCountdown:FireAllClients(count)
+        task.wait(1)
+        if #getPlayersInBattle() == 0 or GameState.phase == "GameOver" then
+            GameState.phase = "Lobby"
+            BattleActiveValue.Value = false
+            _G.BattleActive = false
+            return
+        end
+    end
+
+    -- 0: Bat dau tran dau, mo khoa dat thap va spawn quai
+    RE_MatchCountdown:FireAllClients(0)
+    BattleActiveValue.Value = true
+    _G.BattleActive = true
+    RE_MatchStarted:FireAllClients()
+    print("[GameManager] MATCH STARTED! Tower placement unlocked, Wave 1 begins!")
 
     for waveNum = 1, GameState.totalWaves do
         if GameState.phase == "GameOver" or #getPlayersInBattle() == 0 then break end
         GameState.currentWave = waveNum
 
-        local waveData = WaveConfig.GetWave(waveNum)
-        local waitTime = waveData and waveData.waitTime or 10
-        GameState.phase = "WaveCountdown"
-        print(string.format("[GameManager] Next wave in %ds...", waitTime))
-        task.wait(waitTime)
+        -- Wave 1 chay ngay sau 3s dem nguoc; cac wave tiep theo moi nghi waitTime
+        if waveNum > 1 then
+            local waveData = WaveConfig.GetWave(waveNum)
+            local waitTime = waveData and waveData.waitTime or 10
+            GameState.phase = "WaveCountdown"
+            print(string.format("[GameManager] Next wave in %ds...", waitTime))
+            task.wait(waitTime)
+        end
 
         if GameState.phase == "GameOver" or #getPlayersInBattle() == 0 then break end
 
@@ -391,6 +455,9 @@ local function startGame()
         print("[GameManager] GAME WIN! All waves cleared.")
         RE_GameWin:FireAllClients(GameState.totalWaves)
     end
+
+    BattleActiveValue.Value = false
+    _G.BattleActive = false
 end
 
 task.spawn(function()

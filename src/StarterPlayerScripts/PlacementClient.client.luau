@@ -14,6 +14,9 @@ local camera     = workspace.CurrentCamera
 local Remotes    = ReplicatedStorage:WaitForChild("Remotes")
 local RE_Place   = Remotes:WaitForChild("PlaceTower")
 local RE_Cash    = Remotes:WaitForChild("UpdateCash")
+local RE_MatchStarted   = Remotes:WaitForChild("MatchStarted")
+local RE_ResetBattleUI  = Remotes:WaitForChild("ResetBattleUI")
+local RE_LocationChanged = Remotes:WaitForChild("LocationChanged")
 
 local Towers = ReplicatedStorage:WaitForChild("Towers")
 local gui    = player.PlayerGui:WaitForChild("UnitHotbarGui")
@@ -38,6 +41,20 @@ local isPlacing         = false
 local playerCash        = 2500
 local currentValid      = false
 local currentSnapPos    = nil
+local currentRotation   = 0     -- goc xoay tower (bam phim R de xoay)
+local matchStarted      = false -- chi cho phep dat thap sau khi dem nguoc 3s ket thuc
+
+local function showStartNotice(msg)
+    local bsg = player.PlayerGui:FindFirstChild("BattleStartGui")
+    local notice = bsg and bsg:FindFirstChild("NoticeLabel", true)
+    if notice then
+        notice.Text = msg or "⚠ Hãy nhấn nút [BẮT ĐẦU] trước khi đặt nhân vật!"
+        notice.Visible = true
+        task.delay(2.5, function()
+            if notice then notice.Visible = false end
+        end)
+    end
+end
 
 ------------------------------------------------------------------------
 -- CASH SYNC
@@ -133,6 +150,19 @@ end
 -- SELECT UNIT
 ------------------------------------------------------------------------
 local function selectUnit(unitName, slotIndex)
+    if not matchStarted then
+        showStartNotice("⚠ Hãy nhấn nút [BẮT ĐẦU] trước khi đặt nhân vật!")
+        local slot = hotbar:FindFirstChild("Slot" .. slotIndex)
+        if slot then
+            local t = TweenService:Create(slot, TweenInfo.new(0.05, Enum.EasingStyle.Bounce), {Position = slot.Position + UDim2.new(0, 4, 0, 0)})
+            t:Play()
+            t.Completed:Connect(function()
+                TweenService:Create(slot, TweenInfo.new(0.05), {Position = slot.Position - UDim2.new(0, 4, 0, 0)}):Play()
+            end)
+        end
+        return
+    end
+
     if selectedUnit == unitName then
         clearPlacement()
         return
@@ -155,12 +185,39 @@ local function selectUnit(unitName, slotIndex)
 end
 
 ------------------------------------------------------------------------
--- HOTBAR BUTTON CONNECTIONS
+-- HOTBAR BUTTON CONNECTIONS & VIEWPORT CAMERA SETUP
 ------------------------------------------------------------------------
+local function setupSlotPreview(slot)
+    local vf = slot:FindFirstChild("ModelPreview")
+    if vf and vf:IsA("ViewportFrame") then
+        local m = vf:FindFirstChildWhichIsA("Model")
+        if m then
+            local cam = vf:FindFirstChildOfClass("Camera")
+            if not cam then
+                cam = Instance.new("Camera")
+                cam.Name = "SlotCamera"
+                cam.Parent = vf
+            end
+            vf.CurrentCamera = cam
+
+            local h = m:FindFirstChild("Head") or m.PrimaryPart
+            if h then
+                -- Dat Camera luon doi dien mat nhan vat bat ke nhan vat xoay huong nao
+                local faceDir = h.CFrame.LookVector
+                local camPos = h.Position + faceDir * 3.8 + Vector3.new(0, -0.2, 0)
+                local targetPos = h.Position + Vector3.new(0, -0.3, 0)
+                cam.CFrame = CFrame.lookAt(camPos, targetPos)
+            end
+        end
+    end
+end
+
 local slotUnits = { "IceHero", "CrimsonHero", nil, nil, nil, nil }
 for i, unitName in ipairs(slotUnits) do
     local slot = hotbar:FindFirstChild("Slot" .. i)
     if slot and unitName then
+        setupSlotPreview(slot)
+
         local btn = Instance.new("TextButton")
         btn.Size = UDim2.new(1, 0, 1, 0)
         btn.BackgroundTransparency = 1
@@ -176,7 +233,7 @@ for i, unitName in ipairs(slotUnits) do
 end
 
 ------------------------------------------------------------------------
--- KEYBOARD INPUT (phim 1-6, Q, Chuot Phai)
+-- KEYBOARD INPUT (phim 1-6, Q huy, R xoay)
 ------------------------------------------------------------------------
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
     if gameProcessed then return end
@@ -188,6 +245,13 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
     local slotIdx = keyMap[input.KeyCode]
     if slotIdx and slotUnits[slotIdx] then
         selectUnit(slotUnits[slotIdx], slotIdx)
+        return
+    end
+    if input.KeyCode == Enum.KeyCode.R and isPlacing and ghostModel then
+        currentRotation = (currentRotation + math.pi / 2) % (math.pi * 2)
+        if currentSnapPos then
+            ghostModel:PivotTo(CFrame.new(currentSnapPos) * CFrame.Angles(0, currentRotation, 0))
+        end
         return
     end
     if input.KeyCode == Enum.KeyCode.Q then
@@ -298,7 +362,7 @@ RunService.RenderStepped:Connect(function()
         local snapPos = pos
         currentSnapPos = snapPos
 
-        ghostModel:PivotTo(CFrame.new(snapPos))
+        ghostModel:PivotTo(CFrame.new(snapPos) * CFrame.Angles(0, currentRotation, 0))
         rangeCircle.CFrame = CFrame.new(pos.X, pos.Y + 0.1, pos.Z) * CFrame.Angles(0, 0, math.rad(90))
 
         -- Kiem tra tinh hop le
@@ -325,6 +389,11 @@ end)
 -- CLICK DAT TOWER
 ------------------------------------------------------------------------
 mouse.Button1Down:Connect(function()
+    if not matchStarted then
+        showStartNotice("⚠ Hãy nhấn nút [BẮT ĐẦU] trước khi đặt nhân vật!")
+        return
+    end
+
     if not isPlacing or not selectedUnit or not currentValid or not currentSnapPos then
         return
     end
@@ -344,10 +413,29 @@ mouse.Button1Down:Connect(function()
         return
     end
 
-    -- Vi tri hop le: Gui len Server
-    local placeCFrame = CFrame.new(currentSnapPos)
+    -- Vi tri hop le: Gui len Server kem goc xoay
+    local placeCFrame = CFrame.new(currentSnapPos) * CFrame.Angles(0, currentRotation, 0)
     RE_Place:FireServer(selectedUnit, placeCFrame)
     clearPlacement()
 end)
 
-print("[PlacementClient] Ready with Anti-Overlap & Ghost Fix.")
+------------------------------------------------------------------------
+-- MATCH STATE LISTENERS
+------------------------------------------------------------------------
+RE_MatchStarted.OnClientEvent:Connect(function()
+    matchStarted = true
+end)
+
+RE_ResetBattleUI.OnClientEvent:Connect(function()
+    matchStarted = false
+    clearPlacement()
+end)
+
+RE_LocationChanged.OnClientEvent:Connect(function(location)
+    if location == "Lobby" then
+        matchStarted = false
+        clearPlacement()
+    end
+end)
+
+print("[PlacementClient] Ready with Anti-Overlap, Rotation & Match Gate.")
