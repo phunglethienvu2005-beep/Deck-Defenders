@@ -19,9 +19,13 @@ local RE_ResetBattleUI  = Remotes:WaitForChild("ResetBattleUI")
 local RE_LocationChanged = Remotes:WaitForChild("LocationChanged")
 
 local Towers = ReplicatedStorage:WaitForChild("Towers")
-local gui    = player.PlayerGui:WaitForChild("UnitHotbarGui")
-local hotbar = gui:WaitForChild("HotbarFrame")
-local cashLabel = gui:WaitForChild("CurrencyDisplay"):WaitForChild("CashLabel")
+
+-- Tim AnimeCrusadersLobbyUI de su dung thanh BottomBar thong nhat
+local lobbyGui = player.PlayerGui:WaitForChild("AnimeCrusadersLobbyUI", 15)
+local bottomBar = lobbyGui and lobbyGui:WaitForChild("Root", 10):WaitForChild("MainMenu", 10):WaitForChild("BottomBar", 10)
+local hotbar = bottomBar and bottomBar:WaitForChild("EquippedUnits", 10)
+local cashBox = bottomBar and bottomBar:WaitForChild("Currencies", 10):WaitForChild("CashBox", 10)
+local cashLabel = cashBox and cashBox:WaitForChild("CashLabel", 10)
 
 ------------------------------------------------------------------------
 -- TOWER CONFIG
@@ -61,7 +65,9 @@ end
 ------------------------------------------------------------------------
 RE_Cash.OnClientEvent:Connect(function(newCash)
     playerCash = newCash
-    cashLabel.Text = string.format("%s", tostring(math.floor(newCash)))
+    if cashLabel then
+        cashLabel.Text = string.format("%s", tostring(math.floor(newCash)))
+    end
 end)
 
 local function syncLeaderstats()
@@ -70,10 +76,14 @@ local function syncLeaderstats()
         local yen = ls:WaitForChild("Yen", 5)
         if yen then
             playerCash = yen.Value
-            cashLabel.Text = tostring(yen.Value)
+            if cashLabel then
+                cashLabel.Text = tostring(yen.Value)
+            end
             yen.Changed:Connect(function(v)
                 playerCash = v
-                cashLabel.Text = tostring(v)
+                if cashLabel then
+                    cashLabel.Text = tostring(v)
+                end
             end)
         end
     end
@@ -137,11 +147,15 @@ local function clearPlacement()
     currentValid    = false
     currentSnapPos  = nil
 
-    for i = 1, 6 do
-        local slot = hotbar:FindFirstChild("Slot" .. i)
-        if slot then
-            local stroke = slot:FindFirstChildOfClass("UIStroke")
-            if stroke then stroke.Thickness = 2.5 end
+    if hotbar then
+        for i = 1, 6 do
+            local slot = hotbar:FindFirstChild("Slot" .. i)
+            if slot then
+                local stroke = slot:FindFirstChildOfClass("UIStroke")
+                if stroke then
+                    stroke.Thickness = (i <= 2) and 2.5 or 1
+                end
+            end
         end
     end
 end
@@ -152,7 +166,7 @@ end
 local function selectUnit(unitName, slotIndex)
     if not matchStarted then
         showStartNotice("⚠ Hãy nhấn nút [BẮT ĐẦU] trước khi đặt nhân vật!")
-        local slot = hotbar:FindFirstChild("Slot" .. slotIndex)
+        local slot = hotbar and hotbar:FindFirstChild("Slot" .. slotIndex)
         if slot then
             local t = TweenService:Create(slot, TweenInfo.new(0.05, Enum.EasingStyle.Bounce), {Position = slot.Position + UDim2.new(0, 4, 0, 0)})
             t:Play()
@@ -174,7 +188,7 @@ local function selectUnit(unitName, slotIndex)
     local cfg = TOWER_CONFIG[unitName]
     if not cfg then return end
 
-    local slot = hotbar:FindFirstChild("Slot" .. slotIndex)
+    local slot = hotbar and hotbar:FindFirstChild("Slot" .. slotIndex)
     if slot then
         local stroke = slot:FindFirstChildOfClass("UIStroke")
         if stroke then stroke.Thickness = 4.5 end
@@ -202,7 +216,6 @@ local function setupSlotPreview(slot)
 
             local h = m:FindFirstChild("Head") or m.PrimaryPart
             if h then
-                -- Dat Camera luon doi dien mat nhan vat bat ke nhan vat xoay huong nao
                 local faceDir = h.CFrame.LookVector
                 local camPos = h.Position + faceDir * 3.8 + Vector3.new(0, -0.2, 0)
                 local targetPos = h.Position + Vector3.new(0, -0.3, 0)
@@ -213,22 +226,28 @@ local function setupSlotPreview(slot)
 end
 
 local slotUnits = { "IceHero", "CrimsonHero", nil, nil, nil, nil }
-for i, unitName in ipairs(slotUnits) do
-    local slot = hotbar:FindFirstChild("Slot" .. i)
-    if slot and unitName then
-        setupSlotPreview(slot)
+if hotbar then
+    for i, unitName in ipairs(slotUnits) do
+        local slot = hotbar:FindFirstChild("Slot" .. i)
+        if slot and unitName then
+            setupSlotPreview(slot)
 
-        local btn = Instance.new("TextButton")
-        btn.Size = UDim2.new(1, 0, 1, 0)
-        btn.BackgroundTransparency = 1
-        btn.Text = ""
-        btn.ZIndex = 5
-        btn.Parent = slot
-        local capturedI = i
-        local capturedName = unitName
-        btn.MouseButton1Click:Connect(function()
-            selectUnit(capturedName, capturedI)
-        end)
+            local btn = slot:FindFirstChild("SelectButton")
+            if not btn then
+                btn = Instance.new("TextButton")
+                btn.Name = "SelectButton"
+                btn.Size = UDim2.new(1, 0, 1, 0)
+                btn.BackgroundTransparency = 1
+                btn.Text = ""
+                btn.ZIndex = 8
+                btn.Parent = slot
+            end
+            local capturedI = i
+            local capturedName = unitName
+            btn.MouseButton1Click:Connect(function()
+                selectUnit(capturedName, capturedI)
+            end)
+        end
     end
 end
 
