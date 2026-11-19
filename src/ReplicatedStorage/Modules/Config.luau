@@ -1,0 +1,13 @@
+--!strict
+local Config = {}
+
+Config.BASE_GOLD = 1000
+Config.BASE_HEALTH = 100
+Config.MAX_UNITS_PER_PLAYER = 15
+Config.MAX_TOTAL_UNITS = 50
+Config.SELL_REFUND_RATIO = 0.7
+Config.INTERMISSION_TIME = 10
+Config.MIN_PLACEMENT_DISTANCE = 5
+Config.MIN_WAYPOINT_DISTANCE = 4
+
+return Config

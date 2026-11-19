@@ -184,6 +184,7 @@ function update3DPartyPlatforms(party)
 			bb.Size = UDim2.new(0, 160, 0, 50)
 			bb.StudsOffset = Vector3.new(0, 4.5, 0)
 			bb.AlwaysOnTop = true
+			bb.Enabled = false -- Ẩn chữ màu xanh/vàng lơ lửng theo yêu cầu
 			bb.Parent = pad
 
 			local lbl = Instance.new("TextLabel")
@@ -192,23 +193,14 @@ function update3DPartyPlatforms(party)
 			lbl.BackgroundTransparency = 1
 			lbl.Font = Enum.Font.FredokaOne
 			lbl.TextScaled = true
+			lbl.Visible = false -- Ẩn nhãn chữ
 			lbl.Parent = bb
 		end
 
 		local lbl = bb:FindFirstChild("Title")
-		if member then
-			local isLeader = (member == party.leader)
-			pad.Color = isLeader and Color3.fromRGB(255, 215, 0) or Color3.fromRGB(0, 170, 255)
-			if lbl then
-				lbl.Text = isLeader and ("👑 " .. member.DisplayName) or member.DisplayName
-				lbl.TextColor3 = isLeader and Color3.fromRGB(255, 230, 80) or Color3.fromRGB(255, 255, 255)
-			end
-		else
-			pad.Color = Color3.fromRGB(40, 45, 65)
-			if lbl then
-				lbl.Text = "➕ MỜI BẠN"
-				lbl.TextColor3 = Color3.fromRGB(0, 255, 170)
-			end
+		bb.Enabled = false
+		if lbl then
+			lbl.Visible = false
 		end
 	end
 end

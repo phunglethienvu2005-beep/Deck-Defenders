@@ -505,7 +505,7 @@ local function renderModeList()
 		btn.Size = UDim2.new(1, -8, 0, 48)
 		btn.BackgroundColor3 = COLOR_CARD
 		btn.Font = FONT_TITLE
-		btn.Text = "  " .. m.name .. "  (65%)"
+		btn.Text = "  " .. m.name
 		btn.TextColor3 = Color3.new(1, 1, 1)
 		btn.TextSize = 15
 		btn.TextXAlignment = Enum.TextXAlignment.Left

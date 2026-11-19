@@ -102,11 +102,29 @@ function EnemyMover.StartMoving(enemyModel, speed, onReachedEnd)
     local waist = joints["Waist"]
     local neck = joints["Neck"]
 
-    -- Do cao de chan quai tiep xuc dung mat duong khong bi chim
-    local footOffset = 2.35
-    local rFoot = enemyModel:FindFirstChild("RightFoot") or enemyModel:FindFirstChild("LeftFoot")
+    -- Do cao tu Root toi day ban chan de chan tiep xuc sat dung mat dat
+    local footOffset = 1.15
+    local rFoot = enemyModel:FindFirstChild("RightFoot") or enemyModel:FindFirstChild("LeftFoot") or enemyModel:FindFirstChild("Right Leg")
     if rFoot and root then
-        footOffset = math.max(1.5, root.Position.Y - (rFoot.Position.Y - rFoot.Size.Y / 2))
+        footOffset = math.max(0.8, root.Position.Y - (rFoot.Position.Y - rFoot.Size.Y / 2))
+    end
+
+    -- Raycast parameters de do do cao mat dat / bac da
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    rayParams.FilterDescendantsInstances = {
+        enemyModel,
+        workspace:FindFirstChild("Waypoints"),
+        workspace:FindFirstChild("Towers"),
+        workspace:FindFirstChild("Enemies"),
+        workspace:FindFirstChild("EnemySpawn"),
+        workspace:FindFirstChild("EnemyBase"),
+    }
+
+    -- Can chinh quai dung ngay tren mat dat ngay khi bat dau
+    local initRay = workspace:Raycast(Vector3.new(root.Position.X, root.Position.Y + 6, root.Position.Z), Vector3.new(0, -25, 0), rayParams)
+    if initRay then
+        root.CFrame = CFrame.new(root.Position.X, initRay.Position.Y + footOffset, root.Position.Z) * (root.CFrame - root.Position)
     end
 
     local moveSpeed = speed
@@ -133,7 +151,7 @@ function EnemyMover.StartMoving(enemyModel, speed, onReachedEnd)
             if not state.active or not enemyModel.Parent then break end
 
             state.wpIndex = i
-            local targetPos = waypoint.Position + Vector3.new(0, footOffset, 0)
+            local targetPos = waypoint.Position
 
             while state.active and enemyModel.Parent do
                 local now = tick()
@@ -152,10 +170,18 @@ function EnemyMover.StartMoving(enemyModel, speed, onReachedEnd)
 
                 local stepDist = math.min(dist, moveSpeed * dt)
                 local moveDir = flatDir.Unit
-                local newPos = currentPos + (moveDir * stepDist)
+                local nextX = currentPos.X + (moveDir.X * stepDist)
+                local nextZ = currentPos.Z + (moveDir.Z * stepDist)
 
-                -- Quay mat theo huong di chuyen
-                local newRot = CFrame.lookAt(newPos, newPos + moveDir)
+                -- Do do cao mat dat ngay tai toa do tiep theo
+                local groundRay = workspace:Raycast(Vector3.new(nextX, currentPos.Y + 5, nextZ), Vector3.new(0, -20, 0), rayParams)
+                local targetY = groundRay and (groundRay.Position.Y + footOffset) or currentPos.Y
+                local nextY = currentPos.Y + (targetY - currentPos.Y) * math.min(1, dt * 18)
+
+                local finalPos = Vector3.new(nextX, nextY, nextZ)
+
+                -- Quay mat theo huong di chuyen va ap dung vi tri tren mat dat
+                local newRot = CFrame.lookAt(finalPos, finalPos + moveDir)
                 root.CFrame = newRot
 
                 state.distanceTravelled = state.distanceTravelled + stepDist

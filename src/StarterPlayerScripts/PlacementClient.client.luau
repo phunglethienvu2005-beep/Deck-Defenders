@@ -12,7 +12,7 @@ local mouse      = player:GetMouse()
 local camera     = workspace.CurrentCamera
 
 local Remotes    = ReplicatedStorage:WaitForChild("Remotes")
-local RE_Place   = Remotes:WaitForChild("PlaceTower")
+local RE_Place   = Remotes:WaitForChild("PlaceUnit")
 local RE_Cash    = Remotes:WaitForChild("UpdateCash")
 local RE_MatchStarted   = Remotes:WaitForChild("MatchStarted")
 local RE_ResetBattleUI  = Remotes:WaitForChild("ResetBattleUI")
@@ -146,6 +146,7 @@ local function clearPlacement()
     selectedUnit    = nil
     currentValid    = false
     currentSnapPos  = nil
+    player:SetAttribute("IsPlacing", false)
 
     if hotbar then
         for i = 1, 6 do
@@ -177,6 +178,10 @@ local function selectUnit(unitName, slotIndex)
         return
     end
 
+    if _G.UnitInspector then
+        _G.UnitInspector.Close()
+    end
+
     if selectedUnit == unitName then
         clearPlacement()
         return
@@ -184,6 +189,7 @@ local function selectUnit(unitName, slotIndex)
     clearPlacement()
     selectedUnit = unitName
     isPlacing    = true
+    player:SetAttribute("IsPlacing", true)
 
     local cfg = TOWER_CONFIG[unitName]
     if not cfg then return end
@@ -405,7 +411,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 ------------------------------------------------------------------------
--- CLICK DAT TOWER
+-- CLICK DAT TOWER & CHON TOWER (RAYCAST INSPECT)
 ------------------------------------------------------------------------
 mouse.Button1Down:Connect(function()
     if not matchStarted then
@@ -413,7 +419,29 @@ mouse.Button1Down:Connect(function()
         return
     end
 
-    if not isPlacing or not selectedUnit or not currentValid or not currentSnapPos then
+    if not isPlacing then
+        -- Raycast de kiem tra co click trung Tower nao khong
+        local ray = camera:ScreenPointToRay(mouse.X, mouse.Y)
+        local rayParams = RaycastParams.new()
+        rayParams.FilterType = Enum.RaycastFilterType.Include
+        local towerFolder = workspace:FindFirstChild("Towers")
+        if towerFolder then
+            rayParams.FilterDescendantsInstances = { towerFolder }
+            local hit = workspace:Raycast(ray.Origin, ray.Direction * 1000, rayParams)
+            if hit and hit.Instance then
+                local model = hit.Instance:FindFirstAncestorOfClass("Model")
+                if model and model.Parent == towerFolder then
+                    if _G.UnitInspector then
+                        _G.UnitInspector.Open(model)
+                    end
+                    return
+                end
+            end
+        end
+        return
+    end
+
+    if not selectedUnit or not currentValid or not currentSnapPos then
         return
     end
 

@@ -12,7 +12,8 @@ local VFX     = ReplicatedStorage:WaitForChild("VFX")
 local Enemies = ReplicatedStorage:WaitForChild("Enemies")
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 
-local RE_Place  = Remotes:WaitForChild("PlaceTower")
+-- PlaceUnit handled by UnitService
+local RE_Place = Remotes:WaitForChild("PlaceUnit")
 local RE_Cash   = Remotes:WaitForChild("UpdateCash")
 
 local function getOrMake(parent, cls, name)
@@ -603,6 +604,45 @@ local function setupTowerParts(towerModel)
     end
 end
 
+local function findTargetByMode(pos, range, mode)
+    local enemiesFolder = workspace:FindFirstChild("Enemies")
+    local searchContainers = enemiesFolder and { enemiesFolder } or { workspace }
+    local candidates = {}
+
+    for _, container in ipairs(searchContainers) do
+        if container then
+            for _, e in ipairs(container:GetChildren()) do
+                if isEnemy(e) then
+                    local hrp = e:FindFirstChild("HumanoidRootPart") or e.PrimaryPart
+                    if hrp then
+                        local d = (hrp.Position - pos).Magnitude
+                        if d <= range then
+                            local h = e:FindFirstChild("Zombie") or e:FindFirstChildOfClass("Humanoid")
+                            table.insert(candidates, { enemy = e, dist = d, hp = h and h.Health or 0, hrp = hrp })
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if #candidates == 0 then return nil end
+
+    mode = mode or "First"
+    if mode == "First" then
+        return candidates[1].enemy
+    elseif mode == "Last" then
+        return candidates[#candidates].enemy
+    elseif mode == "Strongest" then
+        table.sort(candidates, function(a, b) return a.hp > b.hp end)
+        return candidates[1].enemy
+    elseif mode == "Closest" then
+        table.sort(candidates, function(a, b) return a.dist < b.dist end)
+        return candidates[1].enemy
+    end
+    return candidates[1].enemy
+end
+
 ------------------------------------------------------------------------
 -- COMBAT LOOP
 ------------------------------------------------------------------------
@@ -623,8 +663,13 @@ local function startCombatLoop(towerModel, unitName)
         towerRoot = towerModel:FindFirstChild("HumanoidRootPart")
         if not towerRoot then conn:Disconnect(); return end
 
+        local curRange = towerModel:GetAttribute("Range") or stats.range
+        local curDmg   = towerModel:GetAttribute("Damage") or stats.damage
+        local curSPA   = towerModel:GetAttribute("SPA") or stats.attackRate
+        local curMode  = towerModel:GetAttribute("TargetMode") or "First"
+
         local now    = tick()
-        local target = findNearest(towerRoot.Position, stats.range)
+        local target = findTargetByMode(towerRoot.Position, curRange, curMode)
         if not target then return end
 
         local tHRP = target:FindFirstChild("HumanoidRootPart")
@@ -641,7 +686,7 @@ local function startCombatLoop(towerModel, unitName)
             end
         end
 
-        if now - lastAttack >= stats.attackRate then
+        if now - lastAttack >= curSPA then
             lastAttack = now
             local origin = towerRoot.Position
             local tPos = tHRP.Position
@@ -649,7 +694,7 @@ local function startCombatLoop(towerModel, unitName)
             if flatDir.Magnitude > 0.1 then
                 towerRoot.CFrame = CFrame.lookAt(origin, origin + flatDir.Unit)
             end
-            dealDamage(target, stats.damage)
+            dealDamage(target, curDmg)
             task.spawn(playAttackSwing, towerModel)
         end
     end)
@@ -722,8 +767,106 @@ RE_Place.OnServerEvent:Connect(function(player, unitName, placeCFrame)
     clone.Parent = TowerFolder
     setupTowerParts(clone)
 
+    -- Set dynamic attributes for Inspector UI and Combat Loop
+    clone:SetAttribute("Owner", player.UserId)
+    clone:SetAttribute("UnitType", unitName)
+    clone:SetAttribute("Level", 0)
+    clone:SetAttribute("MaxLevel", 8)
+    clone:SetAttribute("Damage", stats.damage)
+    clone:SetAttribute("Range", stats.range)
+    clone:SetAttribute("SPA", stats.attackRate)
+    clone:SetAttribute("InvestedCash", stats.price)
+    clone:SetAttribute("TargetMode", "First")
+    clone:SetAttribute("CritChance", 0)
+    clone:SetAttribute("CritDamage", 50)
+    clone:SetAttribute("AttackType", (stats.skillAoE and stats.skillAoE > 0) and "Circle AOE" or "Single Target")
+    clone:SetAttribute("SkillName", stats.skillName or "None")
+
     print(string.format("[TowerServer] %s placed %s (-%d¥) at %s", player.Name, unitName, stats.price, tostring(placeCFrame.Position)))
     task.spawn(startCombatLoop, clone, unitName)
+end)
+
+------------------------------------------------------------------------
+-- UPGRADE / SELL / TARGET MODE REMOTES
+------------------------------------------------------------------------
+local RE_Upgrade = Remotes:FindFirstChild("UpgradeUnit")
+if not RE_Upgrade then
+    RE_Upgrade = Instance.new("RemoteEvent")
+    RE_Upgrade.Name = "UpgradeUnit"
+    RE_Upgrade.Parent = Remotes
+end
+
+local RE_Sell = Remotes:FindFirstChild("SellUnit")
+if not RE_Sell then
+    RE_Sell = Instance.new("RemoteEvent")
+    RE_Sell.Name = "SellUnit"
+    RE_Sell.Parent = Remotes
+end
+
+local RE_SetTargetMode = Remotes:FindFirstChild("SetTargetMode")
+if not RE_SetTargetMode then
+    RE_SetTargetMode = Instance.new("RemoteEvent")
+    RE_SetTargetMode.Name = "SetTargetMode"
+    RE_SetTargetMode.Parent = Remotes
+end
+
+local function getUpgradeCost(unitName, currentLevel)
+    local stats = TOWER_STATS[unitName]
+    local basePrice = stats and stats.price or 500
+    return math.floor(basePrice * (0.8 + currentLevel * 0.45))
+end
+
+RE_Upgrade.OnServerEvent:Connect(function(player, towerModel)
+    if not towerModel or not towerModel.Parent or towerModel.Parent ~= TowerFolder then return end
+    if towerModel:GetAttribute("Owner") ~= player.UserId then return end
+
+    local currentLvl = towerModel:GetAttribute("Level") or 0
+    local maxLvl = towerModel:GetAttribute("MaxLevel") or 8
+    if currentLvl >= maxLvl then return end
+
+    local unitName = towerModel:GetAttribute("UnitType") or "IceHero"
+    local cost = getUpgradeCost(unitName, currentLvl)
+
+    if not spendYen(player, cost) then return end
+
+    local newLvl = currentLvl + 1
+    local currentDmg = towerModel:GetAttribute("Damage") or 30
+    local currentRange = towerModel:GetAttribute("Range") or 22
+    local currentSPA = towerModel:GetAttribute("SPA") or 1.2
+    local invested = towerModel:GetAttribute("InvestedCash") or 500
+
+    local newDmg = math.floor(currentDmg * 1.38)
+    local newRange = currentRange + 1.2
+    local newSPA = math.max(0.4, math.floor((currentSPA - 0.05) * 100) / 100)
+
+    towerModel:SetAttribute("Level", newLvl)
+    towerModel:SetAttribute("Damage", newDmg)
+    towerModel:SetAttribute("Range", newRange)
+    towerModel:SetAttribute("SPA", newSPA)
+    towerModel:SetAttribute("InvestedCash", invested + cost)
+
+    print(string.format("[TowerServer] %s upgraded %s to Lv.%d (-%d¥)", player.Name, unitName, newLvl, cost))
+end)
+
+RE_Sell.OnServerEvent:Connect(function(player, towerModel)
+    if not towerModel or not towerModel.Parent or towerModel.Parent ~= TowerFolder then return end
+    if towerModel:GetAttribute("Owner") ~= player.UserId then return end
+
+    local invested = towerModel:GetAttribute("InvestedCash") or 500
+    local refund = math.floor(invested * 0.7)
+    addYen(player, refund)
+    print(string.format("[TowerServer] %s sold %s (+%d¥ refund)", player.Name, towerModel.Name, refund))
+    towerModel:Destroy()
+end)
+
+RE_SetTargetMode.OnServerEvent:Connect(function(player, towerModel, mode)
+    if not towerModel or not towerModel.Parent or towerModel.Parent ~= TowerFolder then return end
+    if towerModel:GetAttribute("Owner") ~= player.UserId then return end
+
+    local validModes = { First = true, Last = true, Strongest = true, Closest = true }
+    if validModes[mode] then
+        towerModel:SetAttribute("TargetMode", mode)
+    end
 end)
 
 print("[TowerServer] Tower Defense combat server systems online with Anti-Overlap!")

@@ -51,24 +51,14 @@ RE_MatchCountdown.OnClientEvent:Connect(function(count)
         startBtn.Visible = false
         pulseNumber("1", Color3.fromRGB(255, 90, 40), 95)
     elseif count == 0 then
-        pulseNumber("🔥 CHIẾN ĐẤU! 🔥", Color3.fromRGB(255, 50, 50), 52)
-        task.delay(0.9, function()
-            local fade = TweenService:Create(
-                numLabel,
-                TweenInfo.new(0.3, Enum.EasingStyle.Quad),
-                { TextTransparency = 1, TextStrokeTransparency = 1 }
-            )
-            fade:Play()
-            fade.Completed:Connect(function()
-                countFrame.Visible = false
-            end)
-        end)
+        countFrame.Visible = false
     end
 end)
 
 RE_MatchStarted.OnClientEvent:Connect(function()
     matchActive = true
     startBtn.Visible = false
+    countFrame.Visible = false
 end)
 
 RE_ResetBattleUI.OnClientEvent:Connect(function()

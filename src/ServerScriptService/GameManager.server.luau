@@ -1,21 +1,22 @@
--- GameManager: Tower Defense Core Server Script (Zombie Spawner & Waves)
+--!strict
+-- GameManager.server.luau: Quản lý vòng đời trận đấu Tower Defense (Chuẩn Attribute Workspace)
 -- ServerScriptService.GameManager
 
-local RunService        = game:GetService("RunService")
-local Players           = game:GetService("Players")
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 ------------------------------------------------------------------------
--- MODULE IMPORTS
+-- MODULES
 ------------------------------------------------------------------------
-local Modules     = ReplicatedStorage:WaitForChild("Modules")
-local WaveConfig  = require(Modules:WaitForChild("WaveConfig"))
-local EnemyMover  = require(Modules:WaitForChild("EnemyMover"))
+local Modules = ReplicatedStorage:WaitForChild("Modules")
+local WaveData = require(Modules:WaitForChild("WaveData"))
+local EnemyMover = require(Modules:WaitForChild("EnemyMover"))
 
 ------------------------------------------------------------------------
--- REMOTEEVENTS / REMOTEFUNCTIONS
+-- CÁC CONTAINER TRONG GAME
 ------------------------------------------------------------------------
-local function getOrCreate(parent, className, name)
+local function getOrCreate(parent: Instance, className: string, name: string): Instance
     local obj = parent:FindFirstChild(name)
     if not obj then
         obj = Instance.new(className)
@@ -25,160 +26,211 @@ local function getOrCreate(parent, className, name)
     return obj
 end
 
-local RemoteFolder    = getOrCreate(ReplicatedStorage, "Folder", "Remotes")
-local RE_WaveStart    = getOrCreate(RemoteFolder, "RemoteEvent",    "WaveStart")
-local RE_WaveEnd      = getOrCreate(RemoteFolder, "RemoteEvent",    "WaveEnd")
-local RE_EnemySpawned = getOrCreate(RemoteFolder, "RemoteEvent",    "EnemySpawned")
-local RE_EnemyDied    = getOrCreate(RemoteFolder, "RemoteEvent",    "EnemyDied")
-local RE_LivesChanged = getOrCreate(RemoteFolder, "RemoteEvent",    "LivesChanged")
-local RE_GoldChanged  = getOrCreate(RemoteFolder, "RemoteEvent",    "GoldChanged")
-local RE_GameOver     = getOrCreate(RemoteFolder, "RemoteEvent",    "GameOver")
-local RE_GameWin      = getOrCreate(RemoteFolder, "RemoteEvent",    "GameWin")
-local RF_GetGameState = getOrCreate(RemoteFolder, "RemoteFunction", "GetGameState")
-local RE_RequestStartMatch = getOrCreate(RemoteFolder, "RemoteEvent", "RequestStartMatch")
-local RE_MatchCountdown    = getOrCreate(RemoteFolder, "RemoteEvent", "MatchCountdown")
-local RE_MatchStarted      = getOrCreate(RemoteFolder, "RemoteEvent", "MatchStarted")
-local RE_ResetBattleUI     = getOrCreate(RemoteFolder, "RemoteEvent", "ResetBattleUI")
+local EnemiesFolder = getOrCreate(workspace, "Folder", "Enemies")
+local TowersFolder  = getOrCreate(workspace, "Folder", "Towers")
+local VFXFolder     = getOrCreate(workspace, "Folder", "VFX")
 
-local BattleActiveValue    = getOrCreate(ReplicatedStorage, "BoolValue", "BattleActive")
-BattleActiveValue.Value    = false
-_G.BattleActive            = false
-
-local startMatchRequested  = false
-
-local EnemiesFolder   = getOrCreate(workspace, "Folder", "Enemies")
-
-------------------------------------------------------------------------
--- ZOMBIE TEMPLATE
-------------------------------------------------------------------------
 local EnemiesStorage = ReplicatedStorage:WaitForChild("Enemies")
 local ZombieTemplate = EnemiesStorage:WaitForChild("Zombie")
 
 ------------------------------------------------------------------------
--- GAME STATE
+-- REMOTES CHO BẮT ĐẦU TRẬN ĐẤU (BATTLE START)
 ------------------------------------------------------------------------
-local GameState = {
-    phase         = "Lobby",
-    currentWave   = 0,
-    totalWaves    = WaveConfig.GetTotalWaves(),
-    lives         = 20,
-    maxLives      = 20,
-    gold          = 150,
-    activeEnemies = {},
-    enemyCount    = 0,
-}
+local RemoteFolder         = getOrCreate(ReplicatedStorage, "Folder", "Remotes")
+local RE_RequestStartMatch = getOrCreate(RemoteFolder, "RemoteEvent", "RequestStartMatch") :: RemoteEvent
+local RE_MatchCountdown    = getOrCreate(RemoteFolder, "RemoteEvent", "MatchCountdown") :: RemoteEvent
+local RE_MatchStarted      = getOrCreate(RemoteFolder, "RemoteEvent", "MatchStarted") :: RemoteEvent
+local RE_ResetBattleUI     = getOrCreate(RemoteFolder, "RemoteEvent", "ResetBattleUI") :: RemoteEvent
+local RE_SkipWave          = getOrCreate(RemoteFolder, "RemoteEvent", "SkipWave") :: RemoteEvent
+
+local BattleActiveValue    = getOrCreate(ReplicatedStorage, "BoolValue", "BattleActive") :: BoolValue
+BattleActiveValue.Value    = false
+_G.BattleActive            = false
+
+local startMatchRequested  = false
+local skipVoteRequested    = false
+
+RE_RequestStartMatch.OnServerEvent:Connect(function(player: Player)
+    print(string.format("[GameManager] Player %s clicked START GAME button!", player.Name))
+    startMatchRequested = true
+    workspace:SetAttribute("StartMatchRequested", true)
+end)
+
+RE_SkipWave.OnServerEvent:Connect(function(player: Player)
+    print(string.format("[GameManager] Player %s requested to SKIP WAVE!", player.Name))
+    skipVoteRequested = true
+end)
 
 ------------------------------------------------------------------------
--- PLAYER DATA
+-- TỰ ĐỘNG CHUẨN BỊ MẪU QUÁI NẾU THIẾU
 ------------------------------------------------------------------------
-local PlayerData = {}
+local function prepareEnemyTemplate(enemyType: string)
+    local existing = EnemiesStorage:FindFirstChild(enemyType)
+    if existing then return existing end
 
-local function initPlayer(player)
-    PlayerData[player] = {
-        gold = GameState.gold,
-    }
+    local clone = ZombieTemplate:Clone()
+    clone.Name = enemyType
+
+    local stat = WaveData.EnemyStats[enemyType]
+    if stat then
+        local scale = stat.scale or 1.0
+        local color = stat.color or Color3.fromRGB(150, 150, 150)
+
+        for _, part in ipairs(clone:GetDescendants()) do
+            if part:IsA("BasePart") then
+                part.Color = color
+            end
+        end
+
+        if scale ~= 1.0 and clone:IsA("Model") then
+            clone:ScaleTo(scale)
+        end
+    end
+
+    clone.Parent = EnemiesStorage
+    return clone
+end
+
+prepareEnemyTemplate("Skeleton")
+prepareEnemyTemplate("Goblin")
+prepareEnemyTemplate("Boss")
+
+------------------------------------------------------------------------
+-- HỆ THỐNG TIỀN (YEN) CHO NGƯỜI CHƠI
+------------------------------------------------------------------------
+local function getPlayerYen(player: Player): number
+    return player:GetAttribute("Yen") or 1000
+end
+
+local function setPlayerYen(player: Player, amount: number)
+    player:SetAttribute("Yen", amount)
+    local ls = player:FindFirstChild("leaderstats")
+    if ls then
+        local goldVal = ls:FindFirstChild("Gold") or ls:FindFirstChild("Yen")
+        if goldVal and goldVal:IsA("NumberValue") then
+            goldVal.Value = amount
+        end
+    end
+end
+
+local function addPlayerYen(player: Player, amount: number)
+    local cur = getPlayerYen(player)
+    setPlayerYen(player, cur + amount)
+end
+
+local function addYenAll(amount: number)
+    for _, p in ipairs(Players:GetPlayers()) do
+        addPlayerYen(p, amount)
+    end
 end
 
 Players.PlayerAdded:Connect(function(player)
-    initPlayer(player)
-    task.delay(1, function()
-        RE_LivesChanged:FireClient(player, GameState.lives, GameState.maxLives)
-        RE_GoldChanged:FireClient(player, PlayerData[player] and PlayerData[player].gold or 0)
-    end)
+    if player:GetAttribute("Yen") == nil then
+        setPlayerYen(player, 1000)
+    end
 end)
 
-Players.PlayerRemoving:Connect(function(player)
-    PlayerData[player] = nil
-end)
-
-for _, player in ipairs(Players:GetPlayers()) do
-    initPlayer(player)
-end
-
-RF_GetGameState.OnServerInvoke = function(player)
-    return {
-        phase       = GameState.phase,
-        currentWave = GameState.currentWave,
-        totalWaves  = GameState.totalWaves,
-        lives       = GameState.lives,
-        maxLives    = GameState.maxLives,
-        gold        = PlayerData[player] and PlayerData[player].gold or 0,
-    }
+for _, p in ipairs(Players:GetPlayers()) do
+    if p:GetAttribute("Yen") == nil then
+        setPlayerYen(player, 1000)
+    end
 end
 
 ------------------------------------------------------------------------
--- GOLD HELPERS
+-- KHỞI TẠO CÁC ATTRIBUTE CỦA WORKSPACE (KHÔNG DÙNG REMOTE CHO STATE)
 ------------------------------------------------------------------------
-local function addGoldAll(amount)
-    for _, player in ipairs(Players:GetPlayers()) do
-        local pd = PlayerData[player]
-        if pd then
-            pd.gold = pd.gold + amount
-            RE_GoldChanged:FireClient(player, pd.gold)
+local MAX_BASE_HEALTH = 20
+
+workspace:SetAttribute("BaseHealth", MAX_BASE_HEALTH)
+workspace:SetAttribute("MaxBaseHealth", MAX_BASE_HEALTH)
+workspace:SetAttribute("CurrentWave", 0)
+workspace:SetAttribute("TotalWaves", WaveData.GetTotalWaves())
+workspace:SetAttribute("GamePhase", "WaitingForStart")
+workspace:SetAttribute("MatchStarted", false)
+workspace:SetAttribute("StartMatchRequested", false)
+workspace:SetAttribute("IntermissionTime", 0)
+workspace:SetAttribute("AliveEnemies", 0)
+workspace:SetAttribute("RemainingToSpawn", 0)
+workspace:SetAttribute("WaveReward", 0)
+workspace:SetAttribute("SkipVoteRequested", false)
+workspace:SetAttribute("EndlessMode", false)
+
+------------------------------------------------------------------------
+-- BIẾN QUẢN LÝ QUÁI TRÁNH RACE CONDITION (ALIVE ATOMIC)
+------------------------------------------------------------------------
+local aliveEnemiesCount = 0
+local remainingToSpawnCount = 0
+local activeEnemyRegistry = {}
+
+local function clearAllEnemies()
+    for model, _ in pairs(activeEnemyRegistry) do
+        EnemyMover.StopMoving(model)
+        if model.Parent then
+            model:Destroy()
         end
     end
+    activeEnemyRegistry = {}
+    aliveEnemiesCount = 0
+    remainingToSpawnCount = 0
+    workspace:SetAttribute("AliveEnemies", 0)
+    workspace:SetAttribute("RemainingToSpawn", 0)
+    EnemiesFolder:ClearAllChildren()
 end
 
-------------------------------------------------------------------------
--- LIVES HELPER
-------------------------------------------------------------------------
-local function removeLives(amount)
-    GameState.lives = math.max(0, GameState.lives - amount)
-    RE_LivesChanged:FireAllClients(GameState.lives, GameState.maxLives)
-    if GameState.lives <= 0 then
-        GameState.phase = "GameOver"
-        RE_GameOver:FireAllClients(GameState.currentWave)
-        warn("[GameManager] GAME OVER at wave " .. GameState.currentWave)
-    end
-end
-
-------------------------------------------------------------------------
--- ENEMY MANAGEMENT (Dung mau Zombie goc)
-------------------------------------------------------------------------
-local function onEnemyReachedEnd(enemyModel)
-    if GameState.activeEnemies[enemyModel] then
-        GameState.activeEnemies[enemyModel] = nil
-        GameState.enemyCount = math.max(0, GameState.enemyCount - 1)
-        print(string.format("[GameManager] Zombie reached the base! Lives: %d -> %d",
-            GameState.lives, GameState.lives - 1))
-        if enemyModel.Parent then
-            enemyModel:Destroy()
-        end
-        removeLives(1)
-    end
-end
-
-local function onEnemyDied(enemyModel)
-    local entry = GameState.activeEnemies[enemyModel]
-    if entry then
-        local reward = entry.reward or 15
-        EnemyMover.StopMoving(enemyModel)
-        GameState.activeEnemies[enemyModel] = nil
-        GameState.enemyCount = math.max(0, GameState.enemyCount - 1)
-        RE_EnemyDied:FireAllClients(enemyModel)
-        addGoldAll(reward)
-        if enemyModel.Parent then
-            task.delay(0.2, function()
-                if enemyModel.Parent then enemyModel:Destroy() end
-            end)
-        end
-    end
-end
-
-local function spawnEnemy(batchData, waveNum)
-    if GameState.phase ~= "WaveActive" then return end
-    if not ZombieTemplate then
-        warn("[GameManager] ZombieTemplate not found!")
+local function handleEnemyFinish(model: Model, reason: string)
+    local info = activeEnemyRegistry[model]
+    if not info or info.isHandled then
         return
     end
 
-    local model = ZombieTemplate:Clone()
-    model.Name = "Zombie"
+    info.isHandled = true
+    activeEnemyRegistry[model] = nil
 
-    local hrp = model:WaitForChild("HumanoidRootPart", 5)
+    aliveEnemiesCount = math.max(0, aliveEnemiesCount - 1)
+    workspace:SetAttribute("AliveEnemies", aliveEnemiesCount)
+
+    EnemyMover.StopMoving(model)
+
+    if reason == "ReachedEnd" then
+        local dmg = info.damage or 1
+        local currentHP = workspace:GetAttribute("BaseHealth") or MAX_BASE_HEALTH
+        local newHP = math.max(0, currentHP - dmg)
+        workspace:SetAttribute("BaseHealth", newHP)
+        print(string.format("[GameManager] Enemy reached base! BaseHealth: %d -> %d", currentHP, newHP))
+    elseif reason == "Died" then
+        local rwd = info.reward or 15
+        addYenAll(rwd)
+    end
+
+    task.delay(0.1, function()
+        if model and model.Parent then
+            model:Destroy()
+        end
+    end)
+end
+
+------------------------------------------------------------------------
+-- SPAWN ENEMY
+------------------------------------------------------------------------
+local function spawnSingleEnemy(enemyType: string, waveNum: number, waveData: any)
+    if (workspace:GetAttribute("BaseHealth") or 0) <= 0 then
+        return
+    end
+
+    local stat = WaveData.EnemyStats[enemyType] or WaveData.EnemyStats["Zombie"]
+    local template = prepareEnemyTemplate(enemyType)
+    if not template then
+        warn("[GameManager] Template not found for " .. enemyType)
+        return
+    end
+
+    local model = template:Clone()
+    model.Name = enemyType
+
+    local hrp = model:WaitForChild("HumanoidRootPart", 5) :: BasePart?
     local humanoid = model:FindFirstChildOfClass("Humanoid")
     if not hrp or not humanoid then
-        warn("[GameManager] Malformed Zombie model!")
+        warn("[GameManager] Malformed enemy model for " .. enemyType)
         model:Destroy()
         return
     end
@@ -188,19 +240,19 @@ local function spawnEnemy(batchData, waveNum)
     hrp.CanCollide = false
     hrp.CanTouch = false
 
-    -- Chuan hoa Humanoid
-    local diff = _G.CurrentDifficulty or {}
-    local hpMult = diff.hpMult or 1
-    local spdMult = diff.speedMult or 1
-    humanoid.MaxHealth = (batchData.health or 125) * hpMult
-    humanoid.Health = (batchData.health or 125) * hpMult
-    humanoid.WalkSpeed = (batchData.speed or 10) * spdMult
+    local hpMult = waveData and waveData.hpMultiplier or 1.0
+    local spdMult = waveData and waveData.speedMultiplier or 1.0
+    local finalMaxHealth = math.floor(stat.health * hpMult)
+    local finalSpeed = stat.speed * spdMult
+
+    humanoid.MaxHealth = finalMaxHealth
+    humanoid.Health = finalMaxHealth
+    humanoid.WalkSpeed = finalSpeed
     humanoid.BreakJointsOnDeath = false
     humanoid.RequiresNeck = false
+    humanoid.DisplayName = stat.displayName or enemyType
     humanoid.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOn
-    humanoid.DisplayName = batchData.isBoss and "BOSS ZOMBIE" or "Zombie"
 
-    -- Dam bao tat ca bo phan khong collide va khong bi anchored (giu nguyen Motor6D de chay animation buoc di)
     for _, part in ipairs(model:GetDescendants()) do
         if part:IsA("BasePart") then
             part.CanCollide = false
@@ -213,259 +265,303 @@ local function spawnEnemy(batchData, waveNum)
         end
     end
 
-    -- Dat vi tri spawn tai EnemySpawn
     local spawnPoint = workspace:FindFirstChild("EnemySpawn")
-    local startCF = spawnPoint and (spawnPoint.CFrame + Vector3.new(0, hrp.Size.Y / 2 + 1, 0)) or CFrame.new(0, 5, 80)
+    local startCF = spawnPoint and CFrame.new(spawnPoint.Position.X, spawnPoint.Position.Y + 1.2, spawnPoint.Position.Z) or CFrame.new(0, 5, 80)
     model:PivotTo(startCF)
     model.Parent = EnemiesFolder
 
-    GameState.activeEnemies[model] = {
-        id     = "Zombie",
-        model  = model,
-        hp     = humanoid.Health,
-        reward = batchData.reward or 15,
+    aliveEnemiesCount = aliveEnemiesCount + 1
+    workspace:SetAttribute("AliveEnemies", aliveEnemiesCount)
+
+    activeEnemyRegistry[model] = {
+        isHandled = false,
+        reward = stat.reward or 15,
+        damage = stat.damageToBase or 1,
     }
-    GameState.enemyCount = GameState.enemyCount + 1
 
     humanoid.Died:Connect(function()
-        onEnemyDied(model)
+        handleEnemyFinish(model, "Died")
     end)
 
-    EnemyMover.StartMoving(model, humanoid.WalkSpeed, onEnemyReachedEnd)
-    RE_EnemySpawned:FireAllClients(model, "Zombie", {
-        health = humanoid.Health,
-        speed  = humanoid.WalkSpeed,
-        isBoss = batchData.isBoss,
-    })
+    EnemyMover.StartMoving(model, humanoid.WalkSpeed, function()
+        handleEnemyFinish(model, "ReachedEnd")
+    end)
 end
 
 ------------------------------------------------------------------------
--- WAVE RUNNER
-------------------------------------------------------------------------
-local function runWave(waveNum)
-    local playerCount = #Players:GetPlayers()
-    local waveData = WaveConfig.GetScaledWave(waveNum, math.max(1, playerCount))
-    if not waveData then
-        warn("[GameManager] No wave data for wave " .. waveNum)
-        return
-    end
-
-    GameState.phase       = "WaveActive"
-    GameState.enemyCount  = 0
-    GameState.activeEnemies = {}
-
-    print(string.format("[GameManager] === WAVE %d / %d START ===", waveNum, GameState.totalWaves))
-    RE_WaveStart:FireAllClients(waveNum, GameState.totalWaves, waveData.isBossWave)
-
-    -- Spawn batches
-    for _, batch in ipairs(waveData.enemies) do
-        task.spawn(function()
-            if batch.spawnDelay and batch.spawnDelay > 0 then
-                task.wait(batch.spawnDelay)
-            end
-            for i = 1, batch.count do
-                if GameState.phase ~= "WaveActive" then break end
-                spawnEnemy(batch, waveNum)
-                if i < batch.count then
-                    task.wait(batch.interval or 1.0)
-                end
-            end
-        end)
-    end
-
-    -- Cho wave ket thuc
-    local timeout = 300
-    local elapsed = 0
-    local POLL_RATE = 0.5
-    while GameState.phase == "WaveActive" and elapsed < timeout do
-        task.wait(POLL_RATE)
-        elapsed = elapsed + POLL_RATE
-        if #getPlayersInBattle() == 0 then
-            GameState.phase = "GameOver"
-            RE_GameOver:FireAllClients(GameState.currentWave)
-            break
-        end
-        if GameState.enemyCount <= 0 and elapsed > 5 then
-            task.wait(1)
-            if GameState.enemyCount <= 0 then
-                break
-            end
-        end
-    end
-
-    if GameState.phase == "GameOver" then return end
-
-    GameState.phase = "WaveEnd"
-    print(string.format("[GameManager] Wave %d complete! Rewarding %d gold.", waveNum, waveData.rewardGold))
-    addGoldAll(waveData.rewardGold)
-    RE_WaveEnd:FireAllClients(waveNum, waveData.rewardGold)
-end
-
-------------------------------------------------------------------------
--- BATTLE / LOBBY HELPERS
+-- KIỂM TRA KHU VỰC CHIẾN ĐẤU (BATTLE AREA)
 ------------------------------------------------------------------------
 local BATTLE_CENTER = Vector3.new(700, 0, -490)
-local BATTLE_RADIUS = 180
-local LOBBY_SPAWN_CF = CFrame.new(460.14, 12, -72.07)
+local BATTLE_RADIUS = 200
 
-function isPlayerInBattle(player)
+local function isPlayerInBattle(player: Player): boolean
     local char = player.Character
-    local root = char and char:FindFirstChild("HumanoidRootPart")
+    local root = char and char:FindFirstChild("HumanoidRootPart") :: BasePart?
     if not root then return false end
     local flatPos = Vector3.new(root.Position.X, 0, root.Position.Z)
     return (flatPos - BATTLE_CENTER).Magnitude <= BATTLE_RADIUS
 end
 
-function getPlayersInBattle()
+local function getPlayersInBattle(): {Player}
     local list = {}
     for _, p in ipairs(Players:GetPlayers()) do
-        if isPlayerInBattle(p) then table.insert(list, p) end
+        if isPlayerInBattle(p) then
+            table.insert(list, p)
+        end
     end
     return list
 end
 
-local function cleanupBattle()
-    local towers = workspace:FindFirstChild("Towers")
-    if towers then towers:ClearAllChildren() end
-
-    local enemies = workspace:FindFirstChild("Enemies")
-    if enemies then
-        for _, obj in ipairs(enemies:GetChildren()) do
-            EnemyMover.StopMoving(obj)
-            obj:Destroy()
-        end
-    end
-
-    local vfx = workspace:FindFirstChild("VFX")
-    if vfx then vfx:ClearAllChildren() end
-
-    GameState.lives         = GameState.maxLives
-    GameState.currentWave   = 0
-    GameState.enemyCount    = 0
-    GameState.activeEnemies = {}
-    GameState.phase         = "Lobby"
-    BattleActiveValue.Value = false
-    _G.BattleActive         = false
-    startMatchRequested     = false
-    RE_LivesChanged:FireAllClients(GameState.lives, GameState.maxLives)
-    RE_ResetBattleUI:FireAllClients()
-    print("[GameManager] Battle cleaned up and reset to Lobby.")
-end
-
-RE_RequestStartMatch.OnServerEvent:Connect(function(player)
-    if isPlayerInBattle(player) and GameState.phase == "WaitingForStart" then
-        print(string.format("[GameManager] %s requested to START match!", player.Name))
-        startMatchRequested = true
-    end
-end)
-
-local function resetAndReturnToLobby()
-    task.wait(5)
-    local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-    local locEvent = remotes and remotes:FindFirstChild("LocationChanged")
-    for _, p in ipairs(Players:GetPlayers()) do
-        if isPlayerInBattle(p) then
-            local char = p.Character
-            if char then char:PivotTo(LOBBY_SPAWN_CF) end
-            if locEvent then locEvent:FireClient(p, "Lobby") end
-        end
-    end
-    cleanupBattle()
-end
-
 ------------------------------------------------------------------------
--- MAIN GAME LOOP
+-- VÒNG LẶP CHÍNH CỦA TRẬN ĐẤU
 ------------------------------------------------------------------------
-local function startGame()
-    print("[GameManager] Players entered Battle area. Waiting for START button...")
-    GameState.lives         = GameState.maxLives
-    GameState.currentWave   = 0
-    GameState.phase         = "WaitingForStart"
-    BattleActiveValue.Value = false
-    _G.BattleActive         = false
-    startMatchRequested     = false
-    RE_LivesChanged:FireAllClients(GameState.lives, GameState.maxLives)
-    addGoldAll(0)
+local isGameLoopRunning = false
 
-    -- Gui tin hieu hien nut START cho client
+local function runGameSession()
+    if isGameLoopRunning then return end
+    isGameLoopRunning = true
+
+    print("[GameManager] Ready for Tower Defense session.")
+
+    local baseHealth = MAX_BASE_HEALTH
+    workspace:SetAttribute("BaseHealth", baseHealth)
+    workspace:SetAttribute("MaxBaseHealth", MAX_BASE_HEALTH)
+    workspace:SetAttribute("CurrentWave", 0)
+    workspace:SetAttribute("TotalWaves", WaveData.GetTotalWaves())
+    workspace:SetAttribute("GamePhase", "WaitingForStart")
+    workspace:SetAttribute("MatchStarted", false)
+    workspace:SetAttribute("StartMatchRequested", false)
+    workspace:SetAttribute("IntermissionTime", 0)
+    workspace:SetAttribute("AliveEnemies", 0)
+    workspace:SetAttribute("RemainingToSpawn", 0)
+    workspace:SetAttribute("SkipVoteRequested", false)
+    BattleActiveValue.Value = false
+    _G.BattleActive = false
+    startMatchRequested = false
+
+    clearAllEnemies()
+
+    -- 1. Đợi ít nhất 1 người chơi vào khu vực Battle
+    while #getPlayersInBattle() == 0 do
+        task.wait(1)
+    end
+
+    print("[GameManager] Players entered Battle area. Waiting for START GAME button click...")
     RE_ResetBattleUI:FireAllClients()
 
-    -- Cho den khi co nguoi bam nut START
-    while GameState.phase == "WaitingForStart" and #getPlayersInBattle() > 0 do
-        if startMatchRequested then
-            startMatchRequested = false
+    -- 2. CHỜ ĐẾN KHI NGƯỜI CHƠI BẤM NÚT BẮT ĐẦU GAME!
+    while #getPlayersInBattle() > 0 do
+        if startMatchRequested or workspace:GetAttribute("StartMatchRequested") == true then
             break
         end
         task.wait(0.2)
     end
 
-    if #getPlayersInBattle() == 0 or GameState.phase == "GameOver" then
-        GameState.phase = "Lobby"
-        BattleActiveValue.Value = false
-        _G.BattleActive = false
+    startMatchRequested = false
+    workspace:SetAttribute("StartMatchRequested", false)
+
+    -- Nếu người chơi thoát khỏi Battle area trước khi bấm bắt đầu
+    if #getPlayersInBattle() == 0 then
+        isGameLoopRunning = false
         return
     end
 
-    -- DEM NGUOC 3 GIAY
-    GameState.phase = "Countdown"
-    print("[GameManager] Starting 3-second countdown...")
+    -- 3. BẮT ĐẦU ĐẾM NGƯỢC 3 GIÂY CHO TRẬN ĐẤU
+    print("[GameManager] Start button clicked! Initiating 3-second countdown...")
+    workspace:SetAttribute("GamePhase", "Countdown")
+
     for count = 3, 1, -1 do
-        print(string.format("[GameManager] Countdown: %d...", count))
         RE_MatchCountdown:FireAllClients(count)
         task.wait(1)
-        if #getPlayersInBattle() == 0 or GameState.phase == "GameOver" then
-            GameState.phase = "Lobby"
+        if #getPlayersInBattle() == 0 then
+            workspace:SetAttribute("GamePhase", "WaitingForStart")
+            workspace:SetAttribute("MatchStarted", false)
             BattleActiveValue.Value = false
             _G.BattleActive = false
+            isGameLoopRunning = false
             return
         end
     end
 
-    -- 0: Bat dau tran dau, mo khoa dat thap va spawn quai
     RE_MatchCountdown:FireAllClients(0)
+    RE_MatchStarted:FireAllClients()
+
     BattleActiveValue.Value = true
     _G.BattleActive = true
-    RE_MatchStarted:FireAllClients()
-    print("[GameManager] MATCH STARTED! Tower placement unlocked, Wave 1 begins!")
+    workspace:SetAttribute("MatchStarted", true)
+    print("[GameManager] MATCH STARTED! Wave system activated.")
 
-    for waveNum = 1, GameState.totalWaves do
-        if GameState.phase == "GameOver" or #getPlayersInBattle() == 0 then break end
-        GameState.currentWave = waveNum
+    -- 4. BẮT ĐẦU VÒNG LẶP CÁC WAVE
+    local currentWave = 1
+    local totalDefinedWaves = WaveData.GetTotalWaves()
 
-        -- Wave 1 chay ngay sau 3s dem nguoc; cac wave tiep theo moi nghi waitTime
-        if waveNum > 1 then
-            local waveData = WaveConfig.GetWave(waveNum)
-            local waitTime = waveData and waveData.waitTime or 10
-            GameState.phase = "WaveCountdown"
-            print(string.format("[GameManager] Next wave in %ds...", waitTime))
-            task.wait(waitTime)
+    while true do
+        if (workspace:GetAttribute("BaseHealth") or 0) <= 0 then
+            print("[GameManager] DEFEAT! BaseHealth reached 0.")
+            workspace:SetAttribute("GamePhase", "Defeat")
+            workspace:SetAttribute("MatchStarted", false)
+            BattleActiveValue.Value = false
+            _G.BattleActive = false
+            clearAllEnemies()
+            task.wait(4)
+            break
         end
 
-        if GameState.phase == "GameOver" or #getPlayersInBattle() == 0 then break end
-
-        runWave(waveNum)
-
-        if waveNum < GameState.totalWaves and GameState.phase ~= "GameOver" and #getPlayersInBattle() > 0 then
-            task.wait(3)
+        if #getPlayersInBattle() == 0 then
+            print("[GameManager] No players left in battle. Resetting session.")
+            workspace:SetAttribute("GamePhase", "WaitingForStart")
+            workspace:SetAttribute("MatchStarted", false)
+            BattleActiveValue.Value = false
+            _G.BattleActive = false
+            clearAllEnemies()
+            break
         end
+
+        local waveData = WaveData.GetWave(currentWave)
+        if not waveData then
+            break
+        end
+
+        workspace:SetAttribute("CurrentWave", currentWave)
+        workspace:SetAttribute("TotalWaves", waveData.isEndless and 999 or totalDefinedWaves)
+
+        ----------------------------------------------------------------
+        -- BƯỚC 1: ĐẾM NGƯỢC NGHỈ GIỮA WAVE (INTERMISSION) & VOTE SKIP
+        -- Chỉ bắt đầu chạy khi đã bấm Bắt Đầu Game!
+        ----------------------------------------------------------------
+        workspace:SetAttribute("GamePhase", "Intermission")
+        workspace:SetAttribute("SkipVoteRequested", false)
+
+        local intermissionDuration = waveData.intermission or 10
+        print(string.format("[GameManager] Wave %d Intermission: %d seconds. (Skip available)", currentWave, intermissionDuration))
+        skipVoteRequested = false
+
+        while intermissionDuration > 0 do
+            workspace:SetAttribute("IntermissionTime", intermissionDuration)
+
+            -- Kiem tra skip moi 0.1 giay de phan hoi tuc thi
+            for tick = 1, 10 do
+                if skipVoteRequested or workspace:GetAttribute("SkipVoteRequested") == true then
+                    break
+                end
+                task.wait(0.1)
+            end
+
+            if skipVoteRequested or workspace:GetAttribute("SkipVoteRequested") == true then
+                print(string.format("[GameManager] Intermission skipped immediately by player for Wave %d!", currentWave))
+                skipVoteRequested = false
+                workspace:SetAttribute("SkipVoteRequested", false)
+                break
+            end
+
+            intermissionDuration = intermissionDuration - 1
+
+            if (workspace:GetAttribute("BaseHealth") or 0) <= 0 or #getPlayersInBattle() == 0 then
+                break
+            end
+        end
+        workspace:SetAttribute("IntermissionTime", 0)
+
+        if (workspace:GetAttribute("BaseHealth") or 0) <= 0 or #getPlayersInBattle() == 0 then
+            break
+        end
+
+        ----------------------------------------------------------------
+        -- BƯỚC 2: SPAWN THEO NHÓM
+        ----------------------------------------------------------------
+        workspace:SetAttribute("GamePhase", "WaveActive")
+        print(string.format("[GameManager] === WAVE %d STARTED ===", currentWave))
+
+        remainingToSpawnCount = 0
+        for _, grp in ipairs(waveData.groups) do
+            remainingToSpawnCount = remainingToSpawnCount + (grp[2] or 1)
+        end
+        workspace:SetAttribute("RemainingToSpawn", remainingToSpawnCount)
+
+        task.spawn(function()
+            for _, grp in ipairs(waveData.groups) do
+                local enemyType = grp[1]
+                local count = grp[2]
+                local delayBetween = grp[3] or 1.0
+
+                for i = 1, count do
+                    if (workspace:GetAttribute("BaseHealth") or 0) <= 0 or #getPlayersInBattle() == 0 then
+                        return
+                    end
+
+                    spawnSingleEnemy(enemyType, currentWave, waveData)
+
+                    remainingToSpawnCount = math.max(0, remainingToSpawnCount - 1)
+                    workspace:SetAttribute("RemainingToSpawn", remainingToSpawnCount)
+
+                    if i < count then
+                        task.wait(delayBetween)
+                    end
+                end
+            end
+        end)
+
+        ----------------------------------------------------------------
+        -- BƯỚC 3: CHỜ HẾT QUÁI (HẾT SPAWN VÀ ALIVE == 0)
+        ----------------------------------------------------------------
+        while true do
+            task.wait(0.5)
+
+            if (workspace:GetAttribute("BaseHealth") or 0) <= 0 or #getPlayersInBattle() == 0 then
+                break
+            end
+
+            if remainingToSpawnCount <= 0 and aliveEnemiesCount <= 0 then
+                task.wait(0.5)
+                if remainingToSpawnCount <= 0 and aliveEnemiesCount <= 0 then
+                    break
+                end
+            end
+        end
+
+        if (workspace:GetAttribute("BaseHealth") or 0) <= 0 or #getPlayersInBattle() == 0 then
+            break
+        end
+
+        ----------------------------------------------------------------
+        -- BƯỚC 4: WAVE CLEAR & THƯỞNG TIỀN WAVE
+        ----------------------------------------------------------------
+        local reward = waveData.reward or 100
+        addYenAll(reward)
+        workspace:SetAttribute("WaveReward", reward)
+        workspace:SetAttribute("GamePhase", "WaveClear")
+        print(string.format("[GameManager] Wave %d CLEARED! Reward: +%d Yen.", currentWave, reward))
+
+        task.wait(2.5)
+
+        if currentWave >= totalDefinedWaves and not workspace:GetAttribute("EndlessMode") then
+            print("[GameManager] VICTORY! All waves cleared!")
+            workspace:SetAttribute("GamePhase", "Victory")
+            workspace:SetAttribute("MatchStarted", false)
+            BattleActiveValue.Value = false
+            _G.BattleActive = false
+            clearAllEnemies()
+            task.wait(5)
+            break
+        end
+
+        currentWave = currentWave + 1
     end
 
-    if GameState.phase ~= "GameOver" and #getPlayersInBattle() > 0 then
-        GameState.phase = "GameWin"
-        print("[GameManager] GAME WIN! All waves cleared.")
-        RE_GameWin:FireAllClients(GameState.totalWaves)
-    end
-
+    workspace:SetAttribute("MatchStarted", false)
     BattleActiveValue.Value = false
     _G.BattleActive = false
+    isGameLoopRunning = false
 end
 
+------------------------------------------------------------------------
+-- THEO DÕI VÀ CHẠY PHIÊN TRẬN ĐẤU
+------------------------------------------------------------------------
 task.spawn(function()
     while true do
-        task.wait(1)
-        if #getPlayersInBattle() > 0 and GameState.phase == "Lobby" then
-            startGame()
-            resetAndReturnToLobby()
+        if not isGameLoopRunning then
+            runGameSession()
         end
+        task.wait(1.5)
     end
 end)
