@@ -7,6 +7,7 @@ local SocialService = game:GetService("SocialService")
 
 local player = Players.LocalPlayer
 local pGui = player:WaitForChild("PlayerGui")
+local playerGui = pGui
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
 local StageData = require(Modules:WaitForChild("StageData"))
@@ -92,6 +93,7 @@ leftBar.Name = "LeftBar"
 leftBar.Size = UDim2.new(0, 140, 0, 480)
 leftBar.Position = UDim2.new(0, 18, 0.5, -240)
 leftBar.BackgroundTransparency = 1
+leftBar.Visible = false -- An thanh menu trai cu, da dung AnimeLobbyHUD
 leftBar.Parent = mainMenu
 
 local leftLayout = Instance.new("UIListLayout")
@@ -131,6 +133,7 @@ rightBar.Name = "RightBar"
 rightBar.Size = UDim2.new(0, 130, 0, 220)
 rightBar.Position = UDim2.new(1, -148, 0.5, -110)
 rightBar.BackgroundTransparency = 1
+rightBar.Visible = false -- An thanh menu phai cu, da dung AnimeLobbyHUD
 rightBar.Parent = mainMenu
 
 local rightLayout = Instance.new("UIListLayout")
@@ -155,22 +158,23 @@ for i, name in ipairs(rightButtons) do
 	addHoverEffect(btn, COLOR_CARD, COLOR_CARD_LIGHT)
 end
 
--- Bottom Bar: Currencies & Equipped Units (Unified with Combat Hotbar)
+-- Bottom Bar: Equipped Units Hotbar (Can giua, khong khung vien de khop voi AnimeLobbyHUD)
 local bottomBar = Instance.new("Frame")
 bottomBar.Name = "BottomBar"
-bottomBar.Size = UDim2.new(0, 740, 0, 96)
-bottomBar.Position = UDim2.new(0.5, -370, 1, -104)
-bottomBar.BackgroundColor3 = COLOR_BG_DARK
+bottomBar.Size = UDim2.new(0, 530, 0, 86)
+bottomBar.Position = UDim2.new(0.5, 0, 0.962, 0)
+bottomBar.AnchorPoint = Vector2.new(0.5, 1)
+bottomBar.BackgroundTransparency = 1
+bottomBar.Visible = true -- Hien thi thanh nhan vat trong ca Lobby va Tran dau
 bottomBar.Parent = mainMenu
-createCorner(bottomBar, 14)
-createStroke(bottomBar, COLOR_BORDER, 2)
 
--- Currencies Box (Left)
+-- Currencies Box (Left) - An vi da co CurrencyRow tren AnimeLobbyHUD
 local currencyBox = Instance.new("Frame")
 currencyBox.Name = "Currencies"
 currencyBox.Size = UDim2.new(0, 165, 1, -14)
 currencyBox.Position = UDim2.new(0, 8, 0, 7)
 currencyBox.BackgroundColor3 = COLOR_CARD
+currencyBox.Visible = false -- An vi da co CurrencyRow cua AnimeLobbyHUD
 currencyBox.Parent = bottomBar
 createCorner(currencyBox, 10)
 createStroke(currencyBox, Color3.fromRGB(40, 50, 75), 1)
@@ -248,16 +252,19 @@ goldLabel.TextSize = 13
 goldLabel.TextXAlignment = Enum.TextXAlignment.Left
 goldLabel.Parent = currencyBox
 
--- Equipped Units Frame (Right)
+-- Equipped Units Frame (Centered)
 local equippedFrame = Instance.new("Frame")
 equippedFrame.Name = "EquippedUnits"
-equippedFrame.Size = UDim2.new(0, 545, 1, -14)
-equippedFrame.Position = UDim2.new(0, 182, 0, 7)
+equippedFrame.Size = UDim2.new(0, 520, 0, 84)
+equippedFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+equippedFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 equippedFrame.BackgroundTransparency = 1
 equippedFrame.Parent = bottomBar
 
 local eqLayout = Instance.new("UIListLayout")
 eqLayout.FillDirection = Enum.FillDirection.Horizontal
+eqLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+eqLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 eqLayout.Padding = UDim.new(0, 8)
 eqLayout.Parent = equippedFrame
 
@@ -1332,14 +1339,20 @@ end
 -- =====================================================================
 -- SỰ KIỆN NÚT BẤM (BUTTON CONNECTIONS)
 -- =====================================================================
-btnPlayRef.MouseButton1Click:Connect(function()
+local function openGameModeDrawer()
 	renderModeList()
 	modeDrawer.Position = UDim2.new(0, -320, 0.06, 0)
 	modeDrawer.Visible = true
 	TweenService:Create(modeDrawer, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		Position = UDim2.new(0, 160, 0.06, 0)
 	}):Play()
-end)
+end
+
+if btnPlayRef then
+	btnPlayRef.MouseButton1Click:Connect(openGameModeDrawer)
+end
+
+-- Nut Play da duoc chuyen sang AnimePlayMenuUI moi quan ly
 
 closeDrawerBtn.MouseButton1Click:Connect(function()
 	local t = TweenService:Create(modeDrawer, TweenInfo.new(0.2, Enum.EasingStyle.Quad), {
@@ -1467,37 +1480,48 @@ RE_LocationChanged.OnClientEvent:Connect(function(loc)
 		leftBar.Visible = false
 		rightBar.Visible = false
 		bottomBar.Visible = true
+		if currencyBox then currencyBox.Visible = false end
 		modeDrawer.Visible = false
 		stageModal.Visible = false
 		partyModal.Visible = false
+		local animeHud = playerGui:FindFirstChild("AnimeLobbyHUD")
+		if animeHud then animeHud.Enabled = false end
 	elseif loc == "Lobby" then
 		mainMenu.Visible = true
-		leftBar.Visible = true
-		rightBar.Visible = true
-		bottomBar.Visible = true
+		leftBar.Visible = false
+		rightBar.Visible = false
+		bottomBar.Visible = true -- Thanh nhan vat luon hien thi trong ca Lobby
 		teleportOverlay.Visible = false
+		local animeHud = playerGui:FindFirstChild("AnimeLobbyHUD")
+		if animeHud then animeHud.Enabled = true end
 	end
 end)
 
 local RE_MatchStarted = Remotes:FindFirstChild("MatchStarted")
 if RE_MatchStarted then
 	RE_MatchStarted.OnClientEvent:Connect(function()
+		local animeHud = playerGui:FindFirstChild("AnimeLobbyHUD")
 		teleportOverlay.Visible = false
 		mainMenu.Visible = true
 		leftBar.Visible = false
 		rightBar.Visible = false
 		bottomBar.Visible = true
+		if currencyBox then currencyBox.Visible = false end
+		if animeHud then animeHud.Enabled = false end
 	end)
 end
 
 local RE_MatchCountdown = Remotes:FindFirstChild("MatchCountdown")
 if RE_MatchCountdown then
 	RE_MatchCountdown.OnClientEvent:Connect(function()
+		local animeHud = playerGui:FindFirstChild("AnimeLobbyHUD")
 		teleportOverlay.Visible = false
 		mainMenu.Visible = true
 		leftBar.Visible = false
 		rightBar.Visible = false
 		bottomBar.Visible = true
+		if currencyBox then currencyBox.Visible = false end
+		if animeHud then animeHud.Enabled = false end
 	end)
 end
 
@@ -1513,6 +1537,36 @@ task.spawn(function()
 			gemsLabel.Text = "💎 " .. tostring(res.profile.gems or 0)
 			goldLabel.Text = "🪙 " .. tostring(res.profile.gold or 0)
 			updateEquippedUI(res.profile.equippedUnits)
+
+			-- Dong bo len AnimeLobbyHUD
+			local animeHud = playerGui:FindFirstChild("AnimeLobbyHUD")
+			if animeHud then
+				local cRow = animeHud:FindFirstChild("CurrencyRow")
+				if cRow then
+					local gBox = cRow:FindFirstChild("GemsDisplay")
+					local oBox = cRow:FindFirstChild("GoldDisplay")
+					if gBox and gBox:FindFirstChild("AmountLabel") then
+						gBox.AmountLabel.Text = "💠 " .. tostring(res.profile.gems or 0)
+					end
+					if oBox and oBox:FindFirstChild("AmountLabel") then
+						oBox.AmountLabel.Text = "🪙 " .. tostring(res.profile.gold or 2500)
+					end
+				end
+
+				local lBar = animeHud:FindFirstChild("LevelProgressBar")
+				if lBar then
+					local lLabel = lBar:FindFirstChild("LevelLabel")
+					local fill = lBar:FindFirstChild("Fill")
+					local lvl = res.profile.level or 1
+					local exp = res.profile.exp or 0
+					if lLabel then
+						lLabel.Text = string.format("Level %d [%d/100]", lvl, exp)
+					end
+					if fill then
+						fill.Size = UDim2.new(math.clamp(exp / 100, 0.05, 1), 0, 1, 0)
+					end
+				end
+			end
 		end
 		if res.party then
 			updatePartyUI(res.party)
