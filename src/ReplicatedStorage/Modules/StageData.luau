@@ -118,6 +118,11 @@ function StageData.GetAct(worldId, actNum)
 	return nil
 end
 
+function StageData.GetPlayableWaves(act, legacyCount)
+    if act.isInfinite then return 999 end
+    return act.act == 3 and act.waves or legacyCount
+end
+
 function StageData.IsActUnlocked(profileData, worldId, actNum, difficulty)
 	if not profileData or not profileData.progress then
 		-- Mac dinh mo Act 1 Normal

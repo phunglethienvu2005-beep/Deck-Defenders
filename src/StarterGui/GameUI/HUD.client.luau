@@ -11,6 +11,7 @@ local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local RE_SkipWave = Remotes:WaitForChild("SkipWave") :: RemoteEvent
 
 local player = Players.LocalPlayer
+local MatchResult = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("MatchResult"))
 local screenGui = script.Parent :: ScreenGui
 if not screenGui:IsA("ScreenGui") then
     local playerGui = player:WaitForChild("PlayerGui")
@@ -215,7 +216,7 @@ clearRewardLabel.Text = "+¥100"
 ------------------------------------------------------------------------
 local endBanner = Instance.new("Frame")
 endBanner.Name = "EndBanner"
-endBanner.Size = UDim2.new(0, 360, 0, 110)
+endBanner.Size = UDim2.new(0, 360, 0, 132)
 endBanner.Position = UDim2.new(0.5, 0, 0.45, 0)
 endBanner.AnchorPoint = Vector2.new(0.5, 0.5)
 endBanner.BackgroundColor3 = Color3.fromRGB(15, 18, 26)
@@ -249,8 +250,37 @@ endDesc.Text = "Tất cả các đợt quái đã bị quét sạch!"
 ------------------------------------------------------------------------
 -- 5. LẮNG NGHE ATTRIBUTES TỪ WORKSPACE
 ------------------------------------------------------------------------
+local resultRemotes = ReplicatedStorage:WaitForChild("Remotes")
+local returnRemote = resultRemotes:WaitForChild("TeleportToLobby")
+local replayRemote = resultRemotes:WaitForChild("RequestReplay")
+local shownResultId
+
+local function resultButton(label, offset, remote)
+    local button = Instance.new("TextButton", endBanner)
+    button.Size = UDim2.fromOffset(124, 28)
+    button.Position = UDim2.new(0.5, offset, 0, 95)
+    button.BackgroundColor3 = Color3.fromRGB(35, 125, 220)
+    button.Font = Enum.Font.GothamBold
+    button.TextColor3 = Color3.fromRGB(255, 255, 255)
+    button.TextSize = 12
+    button.Text = label
+    Instance.new("UICorner", button).CornerRadius = UDim.new(0, 6)
+    button.Activated:Connect(function()
+        if not endBanner.Visible then return end
+        endBanner.Visible = false
+        remote:FireServer()
+    end)
+end
+
+resultButton("VỀ LOBBY", -132, returnRemote)
+resultButton("CHƠI LẠI", 8, replayRemote)
+
+local function isParticipant()
+    return Players.LocalPlayer:GetAttribute("DeckMatchId") ~= nil
+end
+
 local function updateVisibility()
-    local isMatchStarted = workspace:GetAttribute("MatchStarted") == true
+    local isMatchStarted = isParticipant() and workspace:GetAttribute("MatchStarted") == true
     local phase = workspace:GetAttribute("GamePhase") or "WaitingForStart"
 
     -- Chỉ hiện topBar khi trận đấu đã được ấn Bắt đầu
@@ -290,7 +320,7 @@ local function updateEnemiesDisplay()
 end
 
 local function updateIntermissionDisplay()
-    local isMatchStarted = workspace:GetAttribute("MatchStarted") == true
+    local isMatchStarted = isParticipant() and workspace:GetAttribute("MatchStarted") == true
     local phase = workspace:GetAttribute("GamePhase") or "WaitingForStart"
     local timer = workspace:GetAttribute("IntermissionTime") or 0
 
@@ -310,7 +340,7 @@ local function updatePhaseDisplay()
 
     updateVisibility()
 
-    if phase == "WaveClear" then
+    if isParticipant() and phase == "WaveClear" then
         clearRewardLabel.Text = string.format("+¥%s", formatNumber(reward))
         waveClearBanner.Visible = true
         TweenService:Create(waveClearBanner, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
@@ -326,20 +356,26 @@ local function updatePhaseDisplay()
         waveClearBanner.Visible = false
     end
 
+    local resultId = workspace:GetAttribute("DeckResultMatchId")
+    local ownResultId = player:GetAttribute("DeckResultMatchId")
+    if (phase ~= "Victory" and phase ~= "Defeat") or ownResultId ~= resultId then
+        endBanner.Visible = false
+        return
+    end
+    if not MatchResult.eligible(phase, resultId, ownResultId, shownResultId) then return end
+    shownResultId = resultId
     if phase == "Victory" then
         endTitle.Text = "CHIẾN THẮNG!"
         endTitle.TextColor3 = Color3.fromRGB(80, 235, 120)
         endStroke.Color = Color3.fromRGB(60, 200, 100)
         endDesc.Text = "Chúc mừng bạn đã bảo vệ căn cứ thành công qua toàn bộ các wave!"
         endBanner.Visible = true
-    elseif phase == "Defeat" then
+    else
         endTitle.Text = "THẤT BẠI!"
         endTitle.TextColor3 = Color3.fromRGB(255, 60, 70)
         endStroke.Color = Color3.fromRGB(220, 50, 60)
         endDesc.Text = string.format("Căn cứ đã sụp đổ tại Wave %d. Hãy nâng cấp đội hình và thử lại!", curWave)
         endBanner.Visible = true
-    else
-        endBanner.Visible = false
     end
 end
 
@@ -358,6 +394,13 @@ workspace:GetAttributeChangedSignal("GamePhase"):Connect(function()
     updatePhaseDisplay()
     updateIntermissionDisplay()
 end)
+
+Players.LocalPlayer:GetAttributeChangedSignal("DeckMatchId"):Connect(function()
+    updatePhaseDisplay()
+    updateIntermissionDisplay()
+end)
+Players.LocalPlayer:GetAttributeChangedSignal("DeckResultMatchId"):Connect(updatePhaseDisplay)
+workspace:GetAttributeChangedSignal("DeckResultMatchId"):Connect(updatePhaseDisplay)
 
 updateVisibility()
 updateHealthDisplay()

@@ -1,28 +1,13 @@
-# Mã Nguồn Dự Án Roblox Tower Defense
+# Mã nguồn Deck Defenders
 
-Thư mục này chứa toàn bộ các file mã nguồn (`.luau`) được trích xuất trực tiếp từ dự án Roblox Studio.
+Thư mục này chứa các bản xuất Luau và các bản thử nghiệm. Bản place hiện có các Instance và asset trong TowerDefense_DoAn.rbxl.
 
-## Cấu trúc thư mục
+- ServerScriptService/GameManager.server.luau quản lý trận, trạng thái HUD, wave, spawn và Yen.
+- ServerScriptService/TowerServer_server.luau quản lý placement và combat cho IceHero và CrimsonHero.
+- ServerScriptService/DifficultyController.luau quản lý multiplier HP ở ranh giới wave.
+- ServerScriptService/StageResolver.luau xác thực stage và định nghĩa baseline thử nghiệm Act 3 gồm 15 wave.
+- ReplicatedStorage/Modules/WaveData.luau chứa năm wave baseline cũ và cấu hình Endless. EnemyMover.luau điều khiển quái theo waypoint.
+- ReplicatedStorage/Modules/PlacementRules.luau và MatchResult.luau chứa quy tắc dùng chung cho placement và dedup kết quả.
+- StarterGui và StarterPlayerScripts chứa các bản xuất giao diện và placement. Workspace chứa bản xuất script teleport.
 
-```
-src/
-├── ServerScriptService/
-│   ├── GameManager.server.luau        # Script quản lý tiến trình trò chơi, wave, spawn Zombie và chia thưởng
-│   └── TowerServer.server.luau        # Script quản lý đặt trụ (chống overlap < 5 studs), combat loop, animation và kỹ năng VFX
-│
-├── StarterPlayerScripts/
-│   └── PlacementClient.client.luau    # LocalScript UI Hotbar đặt trụ, ghost preview màu xanh/đỏ và raycast loại trừ
-│
-├── ReplicatedStorage/
-│   ├── Modules/
-│   │   ├── WaveConfig.luau            # Module cấu hình toàn bộ 10 Wave chỉ sinh ra Zombie theo độ khó tăng dần
-│   │   └── EnemyMover.luau            # Module di chuyển Zombie theo Waypoints sử dụng CFrame tweening (không rơi rạc tay chân)
-│   │
-│   └── Enemies/
-│       └── Zombie/
-│           ├── Health.server.luau     # Script hồi máu nguyên bản của Zombie
-│           └── Animate.server.luau    # Script cử động/animation R15 nguyên bản của Zombie
-│
-└── Workspace/
-    └── TheVoid_Teleport.server.luau   # Script dịch chuyển người chơi khi rơi xuống vùng The Void
-```
+Đọc [phân tích kiến trúc](../docs/audit/ARCHITECTURE.md) và [cách đồng bộ](../docs/audit/ROBLOX_STUDIO_SETUP.md) trước khi cập nhật Studio.

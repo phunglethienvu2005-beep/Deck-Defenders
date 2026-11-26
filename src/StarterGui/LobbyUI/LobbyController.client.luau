@@ -10,7 +10,11 @@ local pGui = player:WaitForChild("PlayerGui")
 local playerGui = pGui
 
 local Modules = ReplicatedStorage:WaitForChild("Modules")
+local CrystalTheme = require(Modules:WaitForChild("CrystalMenuTheme"))
+local UnitLoadout = require(Modules:WaitForChild("UnitLoadout"))
+local HttpService = game:GetService("HttpService")
 local StageData = require(Modules:WaitForChild("StageData"))
+local WaveData = require(Modules:WaitForChild("WaveData"))
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 local RF_GetLobbyData   = Remotes:WaitForChild("GetLobbyData")
@@ -323,19 +327,19 @@ end
 
 local unitSlotCards = {}
 local SLOT_CONFIGS = {
-	[1] = { unit = "IceHero",     price = "500¥", stroke = Color3.fromRGB(0, 200, 255), bg = Color3.fromRGB(18, 26, 46) },
-	[2] = { unit = "CrimsonHero", price = "800¥", stroke = Color3.fromRGB(255, 80, 40),  bg = Color3.fromRGB(36, 18, 22) },
+	IceHero = {stroke = Color3.fromRGB(0, 200, 255), bg = Color3.fromRGB(18, 26, 46)},
+	CrimsonHero = {stroke = Color3.fromRGB(255, 80, 40), bg = Color3.fromRGB(36, 18, 22)},
 }
 
 for i = 1, 6 do
-	local cfg = SLOT_CONFIGS[i]
+	local cfg = i <= UnitLoadout.unlockedSlots
 	local slot = Instance.new("Frame")
 	slot.Name = "Slot" .. i
 	slot.Size = UDim2.new(0, 80, 0, 82)
-	slot.BackgroundColor3 = cfg and cfg.bg or Color3.fromRGB(16, 20, 32)
+	slot.BackgroundColor3 =  Color3.fromRGB(16, 20, 32)
 	slot.Parent = equippedFrame
 	createCorner(slot, 10)
-	local stroke = createStroke(slot, cfg and cfg.stroke or Color3.fromRGB(42, 50, 75), cfg and 2.5 or 1)
+	local stroke = createStroke(slot,  Color3.fromRGB(42, 50, 75), cfg and 2.5 or 1)
 
 	-- Top-left Key badge
 	local keyBadge = Instance.new("TextLabel")
@@ -368,7 +372,7 @@ for i = 1, 6 do
 		lvlLabel.Parent = slot
 
 		-- 3D Viewport
-		setupSlotViewport(slot, cfg.unit)
+		-- Models are mounted from the server-confirmed Loadout.
 
 		-- Price Tag bottom
 		local priceLabel = Instance.new("TextLabel")
@@ -377,13 +381,13 @@ for i = 1, 6 do
 		priceLabel.Position = UDim2.new(0, 0, 1, -19)
 		priceLabel.BackgroundTransparency = 1
 		priceLabel.Font = FONT_TITLE
-		priceLabel.Text = cfg.price
+		priceLabel.Text = ""
 		priceLabel.TextColor3 = Color3.fromRGB(255, 220, 0)
 		priceLabel.TextSize = 14
 		priceLabel.ZIndex = 3
 		priceLabel.Parent = slot
 
-		unitSlotCards[i] = { slot = slot, tag = lvlLabel, unit = cfg.unit }
+		unitSlotCards[i] = {slot = slot, tag = lvlLabel, price = priceLabel, stroke = stroke}
 	else
 		-- Empty/Locked Slot
 		local lockIcon = Instance.new("TextLabel")
@@ -984,9 +988,8 @@ for i = 1, 4 do
 	inviteBtn.Visible = false
 	inviteBtn.Parent = card
 	createCorner(inviteBtn, 10)
-	addHoverEffect(inviteBtn, COLOR_GREEN, Color3.fromRGB(39, 174, 96))
 
-	inviteBtn.MouseButton1Click:Connect(function()
+	inviteBtn.Activated:Connect(function()
 		pcall(function()
 			SocialService:PromptGameInvite(player)
 		end)
@@ -1028,7 +1031,6 @@ local function makeActionBtn(name, text, color, hoverColor, width)
 	btn.TextSize = 16
 	btn.Parent = partyActionBar
 	createCorner(btn, 10)
-	addHoverEffect(btn, color, hoverColor)
 	return btn
 end
 
@@ -1039,6 +1041,112 @@ btnChangeMode.TextColor3 = Color3.fromRGB(20, 20, 20)
 local btnInvite     = makeActionBtn("BtnInvite", "➕ MỜI", COLOR_CYAN, Color3.fromRGB(41, 128, 185), 110)
 local btnLeaveParty = makeActionBtn("BtnLeave", "🚪 RỜI PHÒNG", COLOR_RED, Color3.fromRGB(192, 57, 43), 135)
 local btnCloseParty = makeActionBtn("BtnClose", "✖ ĐÓNG", Color3.fromRGB(60, 70, 95), Color3.fromRGB(80, 90, 120), 100)
+
+partyModal.AnchorPoint = Vector2.new(0, 0.5)
+partyModal.Position = UDim2.fromScale(0.043, 0.53)
+partyModal.Size = UDim2.fromOffset(670, 620)
+CrystalTheme.surface(partyModal, CrystalTheme.blue, false)
+local partyScale = Instance.new("UIScale")
+partyScale.Parent = partyModal
+local function fitParty()
+	local size = rootFrame.AbsoluteSize
+	if size.X > 0 and size.Y > 0 then
+		partyScale.Scale = math.min(size.X * 0.49 / 670, size.Y * 0.85 / 620)
+	end
+end
+rootFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitParty)
+fitParty()
+partyHeader.Size = UDim2.new(1, -36, 0, 145)
+partyHeader.ClipsDescendants = true
+CrystalTheme.surface(partyHeader, CrystalTheme.blue, false)
+pModeBadge.Position = UDim2.fromOffset(12, 10)
+pMapTitle.Position = UDim2.fromOffset(12, 80)
+pMapTitle.Size = UDim2.new(1, -24, 0, 32)
+pMapTitle.TextSize = 25
+pMapTitle.TextWrapped = true
+pSubDetails.Position = UDim2.fromOffset(12, 114)
+pSubDetails.Size = UDim2.new(1, -24, 0, 22)
+for _, label in ipairs({pModeBadge, pMapTitle, pSubDetails, pPlayerCount}) do
+	CrystalTheme.label(label)
+	label.ZIndex = partyHeader.ZIndex + 4
+end
+local partyRewards = Instance.new("Frame")
+partyRewards.Name = "PartyRewards"
+partyRewards.Position = UDim2.fromOffset(18, 167)
+partyRewards.Size = UDim2.new(1, -36, 0, 55)
+CrystalTheme.surface(partyRewards, CrystalTheme.blue, false)
+partyRewards.Parent = partyModal
+CrystalTheme.battleRewardCards(partyRewards)
+local partyHeroTemplates = ReplicatedStorage:FindFirstChild("Towers")
+slotsContainer.Position = UDim2.fromOffset(18, 230)
+slotsContainer.Size = UDim2.new(1, -36, 0, 283)
+slotsLayout:Destroy()
+local rosterLayout = Instance.new("UIListLayout")
+rosterLayout.Padding = UDim.new(0, 5)
+rosterLayout.SortOrder = Enum.SortOrder.LayoutOrder
+rosterLayout.Parent = slotsContainer
+for index, ui in ipairs(partySlotUI) do
+	ui.card.LayoutOrder = index
+	ui.card.Size = UDim2.new(1, 0, 0, 39)
+	CrystalTheme.surface(ui.card, CrystalTheme.blue, false)
+	ui.avatar.Size = UDim2.fromOffset(46, 46)
+	ui.avatar.Position = UDim2.fromOffset(10, 10)
+	ui.nameLabel.Position = UDim2.fromOffset(66, 9)
+	ui.nameLabel.Size = UDim2.fromOffset(148, 22)
+	ui.nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+	ui.nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	ui.leaderTag.Position = UDim2.fromOffset(66, 33)
+	ui.leaderTag.Size = UDim2.fromOffset(97, 17)
+	ui.leaderTag.Text = "◆ PARTY LEADER"
+	ui.leaderTag.TextSize = 10
+	ui.unitsBox.Position = UDim2.fromOffset(221, 4)
+	ui.unitsBox.Size = UDim2.fromOffset(402, 58)
+	ui.unitsBox:FindFirstChildOfClass("UIGridLayout"):Destroy()
+	local loadout = Instance.new("UIListLayout")
+	loadout.FillDirection = Enum.FillDirection.Horizontal
+	loadout.SortOrder = Enum.SortOrder.LayoutOrder
+	loadout.Padding = UDim.new(0, 5)
+	loadout.Parent = ui.unitsBox
+	for slot, unit in ipairs(ui.unitCards) do
+		unit.card.LayoutOrder = slot
+		unit.name.Position = UDim2.fromOffset(4, 5)
+		unit.name.Size = UDim2.new(1, -8, 0, 25)
+		unit.name.TextWrapped = true
+		unit.cost.Position = UDim2.new(0, 4, 1, -18)
+		unit.cost.Size = UDim2.new(1, -8, 0, 15)
+	end
+	ui.inviteBtn.AnchorPoint = Vector2.new(1, 0.5)
+	ui.inviteBtn.Position = UDim2.new(1, -10, 0.5, 0)
+	ui.inviteBtn.Size = UDim2.fromOffset(98, 27)
+	ui.inviteBtn.Text = "+ INVITE"
+	CrystalTheme.button(ui.inviteBtn, CrystalTheme.green, true)
+end
+partyActionBar.Position = UDim2.new(0, 18, 1, -103)
+partyActionBar.Size = UDim2.new(1, -36, 0, 49)
+btnStartGame.Text, btnChangeMap.Text, btnChangeMode.Text = "START", "CHANGE MAP", "CHANGE MODE"
+btnStartGame.TextSize = 26
+btnStartGame.Size = UDim2.fromOffset(225, 48)
+btnChangeMap.Size = UDim2.fromOffset(194, 48)
+btnChangeMode.Size = UDim2.fromOffset(194, 48)
+CrystalTheme.button(btnStartGame, CrystalTheme.green, true)
+CrystalTheme.button(btnChangeMap, CrystalTheme.purple, true)
+CrystalTheme.button(btnChangeMode, CrystalTheme.gold, true)
+for index, button in ipairs({btnInvite, btnLeaveParty, btnCloseParty}) do
+	button.Parent = partyModal
+	button.AnchorPoint = Vector2.new(1, 1)
+	button.Position = UDim2.new(1, -18 - (3 - index) * 117, 1, -9)
+	button.Size = UDim2.fromOffset(109, 34)
+	button.Text = ({"INVITE", "LEAVE PARTY", "CLOSE"})[index]
+	CrystalTheme.button(button, index == 3 and CrystalTheme.red or CrystalTheme.slate, true)
+end
+partyModal:GetPropertyChangedSignal("Visible"):Connect(function()
+	if not partyModal.Visible then return end
+	if not partyHeader:FindFirstChild("VoidPreview") then CrystalTheme.mapPreview(partyHeader) end
+	fitParty()
+	local target = partyScale.Scale
+	partyScale.Scale = target * 0.97
+	TweenService:Create(partyScale, TweenInfo.new(0.20, Enum.EasingStyle.Quad), {Scale = target}):Play()
+end)
 
 -- =====================================================================
 -- 5. MÀN HÌNH CHỜ TELEPORT (LOADING OVERLAY)
@@ -1118,22 +1226,29 @@ end)
 -- LOGIC & CẬP NHẬT GIAO DIỆN
 -- =====================================================================
 
-local function updateEquippedUI(equippedList)
-	if not equippedList then return end
-	for i = 1, 6 do
-		local data = equippedList[i]
+local function updateEquippedUI()
+	local slots = UnitLoadout.slots(player:GetAttribute("DeckLoadout"))
+	local encoded = player:GetAttribute("DeckOwnedUnits")
+	local owned = if typeof(encoded) == "string" then HttpService:JSONDecode(encoded) else {}
+	for i = 1, UnitLoadout.unlockedSlots do
+		local id = slots[i]
 		local ui = unitSlotCards[i]
-		if ui and ui.tag then
-			if data then
-				ui.tag.Text = "Lv." .. (data.level or 1)
-				ui.tag.TextColor3 = Color3.fromRGB(0, 240, 255)
-			else
-				ui.tag.Text = "EMPTY"
-				ui.tag.TextColor3 = Color3.fromRGB(150, 160, 180)
-			end
+		local unit, color = id and UnitLoadout.units[id], id and SLOT_CONFIGS[id]
+		if ui.unit ~= id then
+			ui.unit = id
+			local old = ui.slot:FindFirstChild("ModelPreview")
+			if old then old:Destroy() end
+			if unit then setupSlotViewport(ui.slot, id) end
 		end
+		ui.slot.BackgroundColor3 = color and color.bg or COLOR_BG_DARK
+		ui.stroke.Color = color and color.stroke or Color3.fromRGB(42, 50, 75)
+		ui.tag.Text = unit and ("Lv." .. tostring(owned[id])) or ""
+		ui.price.Text = unit and (tostring(unit.price) .. " ¥") or "EMPTY"
 	end
 end
+player:GetAttributeChangedSignal("DeckLoadout"):Connect(updateEquippedUI)
+player:GetAttributeChangedSignal("DeckOwnedUnits"):Connect(updateEquippedUI)
+updateEquippedUI()
 
 local function updateStageDetails()
 	local world = StageData.GetWorld(selectedWorldId)
@@ -1198,7 +1313,8 @@ local function renderActsList()
 		sub.Position = UDim2.new(0, 10, 0, 26)
 		sub.BackgroundTransparency = 1
 		sub.Font = FONT_BODY
-		sub.Text = string.format("Waves: %d | Req: Lv.%d", act.waves, act.levelReq or 1)
+		sub.Text = string.format("Waves: %s | Req: Lv.%d",
+			if act.isInfinite then "Endless" else tostring(StageData.GetPlayableWaves(act, WaveData.GetTotalWaves())), act.levelReq or 1)
 		sub.TextColor3 = Color3.fromRGB(0, 240, 255)
 		sub.TextSize = 11
 		sub.TextXAlignment = Enum.TextXAlignment.Left
@@ -1296,7 +1412,8 @@ local function updatePartyUI(partyData)
 
 	pModeBadge.Text = string.upper(s.mode or "STORY")
 	pMapTitle.Text = string.format("%s - %s", world and world.name or "World", act and act.name or ("Act " .. tostring(s.act or 1)))
-	pSubDetails.Text = string.format("Difficulty: %s   |   Max Waves: %d", s.difficulty or "NORMAL", act and act.waves or 15)
+	pSubDetails.Text = string.format("Difficulty: %s   |   Max Waves: %s", s.difficulty or "NORMAL",
+		if act and act.isInfinite then "Endless" else tostring(act and StageData.GetPlayableWaves(act, WaveData.GetTotalWaves()) or WaveData.GetTotalWaves()))
 	pPlayerCount.Text = string.format("👥 %d/4 Players", #partyData.members)
 
 	local isLeader = (partyData.leaderUserId == player.UserId)
@@ -1307,28 +1424,67 @@ local function updatePartyUI(partyData)
 	for slotIdx = 1, 4 do
 		local member = partyData.members[slotIdx]
 		local ui = partySlotUI[slotIdx]
+		ui.card.Size = UDim2.new(1, 0, 0, if member then 66 else 39)
+		ui.nameLabel.Position = UDim2.fromOffset(if member then 66 else 12, 9)
 		if member then
 			ui.leaderTag.Visible = member.isLeader
+			ui.card.CrystalRim.Color = member.isLeader and CrystalTheme.gold or CrystalTheme.ice
 			ui.nameLabel.Text = member.displayName or member.name
 			ui.avatar.Visible = true
-			ui.avatar.Image = Players:GetUserThumbnailAsync(member.userId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
+			if ui.avatarUserId ~= member.userId then
+				ui.avatarUserId = member.userId
+				ui.avatar.Image = ""
+				task.spawn(function()
+					local ok, url = pcall(Players.GetUserThumbnailAsync, Players, member.userId,
+						Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
+					if ok and ui.avatarUserId == member.userId then ui.avatar.Image = url end
+				end)
+			end
 			ui.unitsBox.Visible = true
 			ui.inviteBtn.Visible = false
 
 			for uIdx = 1, 6 do
 				local uData = member.equippedUnits and member.equippedUnits[uIdx]
 				local c = ui.unitCards[uIdx]
+				local heroId = uData and uData.id
+				c.card.Size = UDim2.fromOffset(if heroId then 97 else 33, 58)
+				if c.heroId ~= heroId then
+					c.heroId = heroId
+					local old = c.card:FindFirstChild("HeroPortrait")
+					if old then old:Destroy() end
+					if heroId and partyHeroTemplates then
+						CrystalTheme.heroPortrait(c.card, partyHeroTemplates:FindFirstChild(heroId))
+						local portrait = c.card:FindFirstChild("HeroPortrait")
+						if portrait then portrait.Size = UDim2.fromOffset(39, 58) end
+						c.name.ZIndex, c.cost.ZIndex = c.card.ZIndex + 2, c.card.ZIndex + 2
+						CrystalTheme.label(c.name)
+						CrystalTheme.label(c.cost)
+					end
+				end
 				if uData then
-					c.name.Text = "Lv." .. (uData.level or 1)
-					c.cost.Text = (uData.cost or 500) .. "¥"
+					local tint = uData.id == "CrimsonHero" and CrystalTheme.red or CrystalTheme.ice
+					CrystalTheme.surface(c.card, tint, false)
+					c.name.Position = UDim2.fromOffset(39, 4)
+					c.name.Size = UDim2.fromOffset(55, 32)
+					c.name.Text = (uData.name or heroId) .. "\nLv. " .. tostring(uData.level or 1)
+					c.name.TextSize = 10
+					c.cost.Position = UDim2.fromOffset(39, 38)
+					c.cost.Size = UDim2.fromOffset(55, 16)
+					c.cost.Text = tostring(uData.cost) .. " ¥"
 				else
-					c.name.Text = "-"
-					c.cost.Text = "-"
+					CrystalTheme.surface(c.card, CrystalTheme.slate, false)
+					c.name.Position = UDim2.fromOffset(0, 0)
+					c.name.Size = UDim2.fromScale(1, 1)
+					c.name.Text = "+"
+					c.name.TextSize = 20
+					c.cost.Text = ""
 				end
 			end
 		else
 			ui.leaderTag.Visible = false
-			ui.nameLabel.Text = "Slot trống"
+			ui.avatarUserId = nil
+			ui.card.CrystalRim.Color = CrystalTheme.slate
+			ui.nameLabel.Text = "Empty slot"
 			ui.avatar.Visible = false
 			ui.unitsBox.Visible = false
 			ui.inviteBtn.Visible = true
@@ -1400,32 +1556,32 @@ btnSelectStage.MouseButton1Click:Connect(function()
 	partyModal.Visible = true
 end)
 
-btnStartGame.MouseButton1Click:Connect(function()
+btnStartGame.Activated:Connect(function()
 	RE_StartMatch:FireServer()
 end)
 
-btnChangeMap.MouseButton1Click:Connect(function()
+btnChangeMap.Activated:Connect(function()
 	partyModal.Visible = false
-	openStageSelect()
+	playerGui:SetAttribute("DeckPlayPage", "Story")
 end)
 
-btnChangeMode.MouseButton1Click:Connect(function()
+btnChangeMode.Activated:Connect(function()
 	partyModal.Visible = false
-	modeDrawer.Visible = true
+	playerGui:SetAttribute("DeckPlayPage", "Modes")
 end)
 
-btnInvite.MouseButton1Click:Connect(function()
+btnInvite.Activated:Connect(function()
 	pcall(function()
 		SocialService:PromptGameInvite(player)
 	end)
 end)
 
-btnLeaveParty.MouseButton1Click:Connect(function()
+btnLeaveParty.Activated:Connect(function()
 	RE_PartyAction:FireServer("Leave")
 	partyModal.Visible = false
 end)
 
-btnCloseParty.MouseButton1Click:Connect(function()
+btnCloseParty.Activated:Connect(function()
 	partyModal.Visible = false
 end)
 
@@ -1445,6 +1601,13 @@ end)
 -- =====================================================================
 RE_PartyUpdate.OnClientEvent:Connect(function(payload)
 	updatePartyUI(payload)
+end)
+
+playerGui:GetAttributeChangedSignal("DeckPartyOpen"):Connect(function()
+	local open = playerGui:GetAttribute("DeckPartyOpen")
+	if open == nil then return end
+	playerGui:SetAttribute("DeckPartyOpen", nil)
+	if not open or currentParty then partyModal.Visible = open end
 end)
 
 RE_TeleportNotice.OnClientEvent:Connect(function(info)
@@ -1472,9 +1635,13 @@ RE_TeleportNotice.OnClientEvent:Connect(function(info)
 end)
 
 -- Lang nghe trang thai vi tri tu Server (Lobby vs Battle)
+local collection = require(Modules:WaitForChild("UnitCollectionView")).mount(screenGui, player, RE_PartyAction)
 local RE_LocationChanged = Remotes:WaitForChild("LocationChanged")
 RE_LocationChanged.OnClientEvent:Connect(function(loc)
-	if loc == "Battle" then
+	if loc == "LoadoutEmpty" then
+		pSubDetails.Text = "Each player must equip at least one unit."
+	elseif loc == "Battle" then
+		collection.setLobby(false)
 		teleportOverlay.Visible = false
 		mainMenu.Visible = true
 		leftBar.Visible = false
@@ -1487,6 +1654,7 @@ RE_LocationChanged.OnClientEvent:Connect(function(loc)
 		local animeHud = playerGui:FindFirstChild("AnimeLobbyHUD")
 		if animeHud then animeHud.Enabled = false end
 	elseif loc == "Lobby" then
+		collection.setLobby(true)
 		mainMenu.Visible = true
 		leftBar.Visible = false
 		rightBar.Visible = false
@@ -1533,10 +1701,16 @@ task.spawn(function()
 
 	if ok and res then
 		lobbyData = res
+		for _, act in ipairs(StageData.GetWorld("world_1").acts) do
+			for _, difficulty in ipairs({"Normal", "Hard"}) do
+				playerGui:SetAttribute("DeckUnlock" .. act.act .. difficulty,
+					StageData.IsActUnlocked(res.profile, "world_1", act.act, difficulty))
+			end
+		end
 		if res.profile then
 			gemsLabel.Text = "💎 " .. tostring(res.profile.gems or 0)
 			goldLabel.Text = "🪙 " .. tostring(res.profile.gold or 0)
-			updateEquippedUI(res.profile.equippedUnits)
+			updateEquippedUI()
 
 			-- Dong bo len AnimeLobbyHUD
 			local animeHud = playerGui:FindFirstChild("AnimeLobbyHUD")

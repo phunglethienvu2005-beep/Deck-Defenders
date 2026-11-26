@@ -1,6 +1,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
+local StageResolver = require(script.Parent:WaitForChild("StageResolver"))
 
 local function getOrCreateRemote(parent, name)
     local r = parent:FindFirstChild(name)
@@ -21,10 +22,20 @@ local LOBBY_SPAWN_CF  = CFrame.new(460.14, 12, -72.07)
 local BATTLE_SPAWN_CF = CFrame.new(704.62, 33.5, -515.72)
 
 local touchDebounce = {}
+local teleportCooldown = {}
 
-local function teleportToBattle(player)
+local function teleportToBattle(player, worldId, actId, difficulty)
+    if Workspace:GetAttribute("GamePhase") ~= "WaitingForStart" then return end
+    local stage
+    if worldId == nil and actId == nil and difficulty == nil then
+        stage = StageResolver.resolve("world_1", 1, "Normal")
+    else
+        stage = StageResolver.resolve(worldId, actId, difficulty)
+    end
+    if not stage then RE_LocationChanged:FireClient(player, "StageRejected"); return end
     local char = player.Character
     if char and char:FindFirstChild("HumanoidRootPart") then
+        StageResolver.select(player, stage)
         char:PivotTo(BATTLE_SPAWN_CF)
         RE_LocationChanged:FireClient(player, "Battle")
     end
@@ -33,13 +44,29 @@ end
 local function teleportToLobby(player)
     local char = player.Character
     if char and char:FindFirstChild("HumanoidRootPart") then
+        StageResolver.select(player, nil)
+        player:SetAttribute("DeckResultMatchId", nil)
         char:PivotTo(LOBBY_SPAWN_CF)
         RE_LocationChanged:FireClient(player, "Lobby")
     end
 end
 
-RE_TeleportToBattle.OnServerEvent:Connect(teleportToBattle)
-RE_TeleportToLobby.OnServerEvent:Connect(teleportToLobby)
+local function connectTeleport(remote, teleport)
+    remote.OnServerEvent:Connect(function(player, ...)
+        local now = os.clock()
+        if now - (teleportCooldown[player] or -math.huge) < 1 then return end
+        teleportCooldown[player] = now
+        teleport(player, ...)
+    end)
+end
+
+connectTeleport(RE_TeleportToBattle, teleportToBattle)
+connectTeleport(RE_TeleportToLobby, teleportToLobby)
+
+Players.PlayerRemoving:Connect(function(player)
+    touchDebounce[player] = nil
+    teleportCooldown[player] = nil
+end)
 
 local function connectPortal(part)
     if not part:IsA("BasePart") then return end

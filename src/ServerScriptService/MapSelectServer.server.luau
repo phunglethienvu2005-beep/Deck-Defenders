@@ -1,4 +1,5 @@
 local Players = game:GetService("Players")
+local StageResolver = require(script.Parent:WaitForChild("StageResolver"))
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
@@ -34,6 +35,11 @@ _G.CurrentDifficulty = DIFFICULTY.Easy
 local BATTLE_CENTER = Vector3.new(700, 0, -490)
 local BATTLE_RADIUS = 180
 local touchDebounce = {}
+local pendingSelection = {}
+Players.PlayerRemoving:Connect(function(player)
+	touchDebounce[player] = nil
+	pendingSelection[player] = nil
+end)
 
 local function getMapList()
 	local list = {}
@@ -69,6 +75,7 @@ local function connectTrigger(part)
 		if touchDebounce[player] and (now - touchDebounce[player]) < 2 then return end
 		touchDebounce[player] = now
 		if isInBattle(player) then return end
+		pendingSelection[player] = now + 60
 		RE_OpenMapSelect:FireClient(player, getMapList(), getDifficultyList())
 	end)
 end
@@ -88,6 +95,9 @@ if mainLobby then
 end
 
 RE_StartBattle.OnServerEvent:Connect(function(player, mapName, diffKey)
+	if workspace:GetAttribute("GamePhase") ~= "WaitingForStart" then return end
+	if (pendingSelection[player] or 0) < tick() then return end
+	if typeof(mapName) ~= "string" or typeof(diffKey) ~= "string" then return end
 	local mapData = nil
 	for _, m in ipairs(MAPS) do
 		if m.name == mapName then mapData = m; break end
@@ -101,7 +111,9 @@ RE_StartBattle.OnServerEvent:Connect(function(player, mapName, diffKey)
 	local char = player.Character
 	if not char or not char:FindFirstChild("HumanoidRootPart") then return end
 
+	pendingSelection[player] = nil
 	_G.CurrentDifficulty = diffData
+	StageResolver.select(player, StageResolver.resolve("world_1", 1, "Normal"))
 	char:PivotTo(mapData.spawnCF)
 	RE_LocationChanged:FireClient(player, "Battle")
 	RE_BattleStarted:FireClient(player, mapName, diffKey, diffData)

@@ -10,13 +10,16 @@ local _waypoints = nil
 local function getWaypoints()
     if _waypoints then return _waypoints end
 
-    local folder = workspace:WaitForChild("Waypoints", 10)
+    local folder = workspace:FindFirstChild("Waypoints")
     if not folder then
         warn("[EnemyMover] Waypoints folder not found!")
         return {}
     end
 
-    local list = folder:GetChildren()
+    local list = {}
+    for _, child in ipairs(folder:GetChildren()) do
+        if child:IsA("BasePart") then table.insert(list, child) end
+    end
     table.sort(list, function(a, b)
         local na = tonumber(a.Name:match("%d+")) or 0
         local nb = tonumber(b.Name:match("%d+")) or 0
@@ -24,7 +27,7 @@ local function getWaypoints()
     end)
 
     local base = workspace:FindFirstChild("EnemyBase")
-    if base then
+    if base and base:IsA("BasePart") then
         table.insert(list, base)
     end
 
@@ -44,14 +47,14 @@ function EnemyMover.StartMoving(enemyModel, speed, onReachedEnd)
     local waypoints = getWaypoints()
     if #waypoints == 0 then
         warn("[EnemyMover] No waypoints defined, cannot move enemy.")
-        return
+        return false
     end
 
     local root = enemyModel:FindFirstChild("HumanoidRootPart") or enemyModel.PrimaryPart
     local humanoid = enemyModel:FindFirstChildOfClass("Humanoid")
-    if not root then
+    if not root or not root:IsA("BasePart") then
         warn("[EnemyMover] HumanoidRootPart not found on " .. enemyModel.Name)
-        return
+        return false
     end
 
     -- Dam bao root Anchored de Server dieu khien vi tri chac chan, cac chi Unanchored
@@ -168,7 +171,9 @@ function EnemyMover.StartMoving(enemyModel, speed, onReachedEnd)
                     break -- Da den waypoint nay, chuyen sang waypoint ke tiep
                 end
 
-                local stepDist = math.min(dist, moveSpeed * dt)
+                local slow = enemyModel:GetAttribute("SlowUntil")
+                local factor = if slow and slow > os.clock() then (enemyModel:GetAttribute("SlowFactor") or 1) else 1
+                local stepDist = math.min(dist, moveSpeed * factor * dt)
                 local moveDir = flatDir.Unit
                 local nextX = currentPos.X + (moveDir.X * stepDist)
                 local nextZ = currentPos.Z + (moveDir.Z * stepDist)
@@ -251,6 +256,7 @@ function EnemyMover.StartMoving(enemyModel, speed, onReachedEnd)
     end)
 
     state.thread = thread
+    return true
 end
 
 ------------------------------------------------------------------------

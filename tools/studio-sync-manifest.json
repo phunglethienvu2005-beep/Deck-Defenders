@@ -1,0 +1,290 @@
+{
+  "buildVersion": "hero-limits-v2",
+  "oneClickFromBuildVersion": "hero-limits-v2",
+  "blockedPlacementWriters": [
+    "ServerScriptService/TowerCombat",
+    "ServerScriptService/UnitService",
+    "ServerScriptService/TowerServer_server"
+  ],
+  "entries": [
+    {"path": "ReplicatedStorage/Modules/UnitLoadout", "className": "ModuleScript", "source": "src/ReplicatedStorage/Modules/UnitLoadout.luau", "create": true},
+    {"path": "ReplicatedStorage/Modules/UnitCollectionView", "className": "ModuleScript", "source": "src/ReplicatedStorage/Modules/UnitCollectionView.luau", "create": true, "previousSources": ["15955:3855143698:767959653"]},
+    {
+      "path": "ServerScriptService/PlayerDash",
+      "className": "Script",
+      "source": "src/ServerScriptService/PlayerDash.server.luau",
+      "create": true,
+      "previousSources": ["4034:3456587098:1898569121"]
+    },
+    {
+      "path": "StarterPlayer/StarterPlayerScripts/PlayerDash",
+      "className": "LocalScript",
+      "source": "src/StarterPlayerScripts/PlayerDash.client.luau",
+      "create": true,
+      "previousSources": ["5571:930300106:662308792"]
+    },
+    {
+      "path": "ReplicatedStorage/Modules/CrystalMenuTheme",
+      "className": "ModuleScript",
+      "source": "src/ReplicatedStorage/Modules/CrystalMenuTheme.luau",
+      "create": true,
+      "previousSources": ["7226:146653401:470686463"]
+    },
+    {
+      "path": "ServerScriptService/DifficultyController",
+      "className": "ModuleScript",
+      "source": "src/ServerScriptService/DifficultyController.luau",
+      "create": true
+    },
+    {
+      "path": "ServerScriptService/StageResolver",
+      "className": "ModuleScript",
+      "source": "src/ServerScriptService/StageResolver.luau",
+      "create": true
+    },
+    {
+      "path": "ReplicatedStorage/Modules/PlacementRules",
+      "className": "ModuleScript",
+      "source": "src/ReplicatedStorage/Modules/PlacementRules.luau",
+      "create": true,
+      "previousSources": ["3580:1439704807:2186769179", "4674:2928839212:2342617739"],
+      "rcSeedSource": "4674:2928839212:2342617739"
+    },
+    {
+      "path": "ReplicatedStorage/Modules/MatchResult",
+      "className": "ModuleScript",
+      "source": "src/ReplicatedStorage/Modules/MatchResult.luau",
+      "create": true
+    },
+    {
+      "path": "ReplicatedStorage/Modules/EnemyMover",
+      "className": "ModuleScript",
+      "source": "src/ReplicatedStorage/Modules/EnemyMover.luau"
+    },
+    {
+      "path": "ReplicatedStorage/Modules/StageData",
+      "className": "ModuleScript",
+      "source": "src/ReplicatedStorage/Modules/StageData.luau"
+    },
+    {
+      "path": "ServerScriptService/GameManager",
+      "className": "Script",
+      "source": "src/ServerScriptService/GameManager.server.luau",
+      "previousSources": ["23700:672184500:2589302076", "23769:3974945609:594841920"]
+    },
+    {
+      "path": "ServerScriptService/TowerServer",
+      "className": "Script",
+      "source": "src/ServerScriptService/TowerServer_server.luau",
+      "previousSources": ["32289:331503955:1011693212", "32608:1808149806:180923609", "33555:954219481:4247623162"],
+      "rcSeedSource": "32608:1808149806:180923609",
+      "rcUpdateSource": "33555:954219481:4247623162"
+    },
+    {
+      "path": "ServerScriptService/LobbyManager",
+      "className": "Script",
+      "source": "src/ServerScriptService/LobbyManager.server.luau"
+    },
+    {
+      "path": "ServerScriptService/LobbyService",
+      "className": "Script",
+      "source": "src/ServerScriptService/LobbyService.server.luau",
+      "previousSources": ["14041:586214192:1584765234"]
+    },
+    {
+      "path": "ServerScriptService/MapSelectServer",
+      "className": "Script",
+      "source": "src/ServerScriptService/MapSelectServer.server.luau"
+    },
+    {
+      "path": "Workspace/CrimsonHero/IdleAnimation",
+      "className": "Script",
+      "source": "src/Workspace/CrimsonHero/IdleAnimation.server.luau"
+    },
+    {
+      "path": "StarterPlayer/StarterPlayerScripts/PlacementClient",
+      "className": "LocalScript",
+      "source": "src/StarterPlayerScripts/PlacementClient.client.luau",
+      "previousSources": ["19402:294360637:86471012", "22661:3736994915:1716243838", "22485:465968650:1777522815", "26973:411921849:2571335577", "26973:1650189876:4180624148"],
+      "rcSeedSource": "22661:3736994915:1716243838",
+      "rcUpdateSource": "26973:1650189876:4180624148"
+    },
+    {
+      "path": "StarterGui/AnimePlayMenuUI/PlayMenuController",
+      "className": "LocalScript",
+      "source": "src/StarterGui/AnimePlayMenuUI/PlayMenuController.client.luau",
+      "previousSources": ["12058:2230982869:2607443203", "22802:2583283278:2431977420"],
+      "rcSeedSource": "12058:2230982869:2607443203",
+      "rcUpdateSource": "22802:2583283278:2431977420"
+    },
+    {
+      "path": "StarterGui/BattleStartGui/BattleStartController",
+      "className": "LocalScript",
+      "source": "src/StarterGui/BattleStartGui/BattleStartController.client.luau",
+      "previousSources": ["2721:557398543:325497867"]
+    },
+    {
+      "path": "StarterGui/GameUI/HUD",
+      "className": "LocalScript",
+      "source": "src/StarterGui/GameUI/HUD.client.luau"
+    },
+    {
+      "path": "StarterGui/LobbyUI/LobbyController",
+      "className": "LocalScript",
+      "source": "src/StarterGui/LobbyUI/LobbyController.client.luau",
+      "previousSources": ["52877:1859598043:4067372096", "58947:3686098213:3849329741", "59778:216709668:45964988"],
+      "rcSeedSource": "52877:1859598043:4067372096",
+      "rcUpdateSource": "59778:216709668:45964988"
+    }
+  ],
+  "legacy": "StarterGui/LobbyGui/LobbyController",
+  "preserve": "ReplicatedStorage/Modules/WaveData",
+  "assets": [
+    [
+      "ReplicatedStorage/Modules",
+      "Folder"
+    ],
+    [
+      "ReplicatedStorage/Remotes",
+      "Folder"
+    ],
+    [
+      "ReplicatedStorage/Towers",
+      "Folder"
+    ],
+    [
+      "ReplicatedStorage/Enemies",
+      "Folder"
+    ],
+    [
+      "ReplicatedStorage/VFX",
+      "Folder"
+    ],
+    [
+      "StarterPlayer/StarterPlayerScripts",
+      "StarterPlayerScripts"
+    ],
+    [
+      "StarterGui/AnimePlayMenuUI",
+      "ScreenGui"
+    ],
+    [
+      "StarterGui/BattleStartGui",
+      "ScreenGui"
+    ],
+    [
+      "StarterGui/GameUI",
+      "ScreenGui"
+    ],
+    [
+      "StarterGui/LobbyUI",
+      "ScreenGui"
+    ],
+    [
+      "StarterGui/LobbyGui",
+      "ScreenGui"
+    ],
+    [
+      "Workspace/EnemySpawn",
+      "BasePart"
+    ],
+    [
+      "Workspace/EnemyBase",
+      "BasePart"
+    ],
+    [
+      "Workspace/BattleSpawn",
+      "BasePart"
+    ],
+    [
+      "Workspace/Waypoints",
+      "Folder"
+    ],
+    [
+      "Workspace/Waypoints/WP1",
+      "BasePart"
+    ],
+    [
+      "Workspace/Waypoints/WP2",
+      "BasePart"
+    ],
+    [
+      "Workspace/Waypoints/WP3",
+      "BasePart"
+    ],
+    [
+      "Workspace/Waypoints/WP4",
+      "BasePart"
+    ],
+    [
+      "Workspace/Waypoints/WP5",
+      "BasePart"
+    ],
+    [
+      "Workspace/Waypoints/WP6",
+      "BasePart"
+    ],
+    [
+      "Workspace/Waypoints/WP7",
+      "BasePart"
+    ],
+    [
+      "Workspace/Waypoints/WP8",
+      "BasePart"
+    ],
+    [
+      "ReplicatedStorage/Towers/IceHero",
+      "Model"
+    ],
+    [
+      "ReplicatedStorage/Towers/IceHero/HumanoidRootPart",
+      "BasePart"
+    ],
+    [
+      "ReplicatedStorage/Towers/CrimsonHero",
+      "Model"
+    ],
+    [
+      "ReplicatedStorage/Towers/CrimsonHero/HumanoidRootPart",
+      "BasePart"
+    ],
+    [
+      "ReplicatedStorage/Enemies/Zombie",
+      "Model"
+    ],
+    [
+      "ReplicatedStorage/Enemies/Zombie/HumanoidRootPart",
+      "BasePart"
+    ]
+  ],
+  "runtimeEvents": [
+    "PlayerDash",
+    "PlaceTower",
+    "PlaceUnit",
+    "PlacementResult",
+    "UpdateCash",
+    "UpgradeUnit",
+    "SellUnit",
+    "SetTargetMode",
+    "RequestStartMatch",
+    "MatchCountdown",
+    "MatchStarted",
+    "ResetBattleUI",
+    "SkipWave",
+    "RequestReplay",
+    "TeleportToBattle",
+    "TeleportToLobby",
+    "LocationChanged",
+    "OpenMapSelect",
+    "StartBattle",
+    "BattleStarted",
+    "PartyAction",
+    "PartyUpdate",
+    "StartMatch",
+    "Matchmaking",
+    "TeleportNotice"
+  ],
+  "runtimeFunctions": [
+    "GetLobbyData"
+  ]
+}

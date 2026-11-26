@@ -9,6 +9,7 @@ local countFrame = gui:WaitForChild("CountdownFrame")
 local numLabel = countFrame:WaitForChild("NumberLabel")
 
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
+local UnitLoadout = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("UnitLoadout"))
 local RE_RequestStartMatch = Remotes:WaitForChild("RequestStartMatch")
 local RE_MatchCountdown    = Remotes:WaitForChild("MatchCountdown")
 local RE_MatchStarted      = Remotes:WaitForChild("MatchStarted")
@@ -16,7 +17,16 @@ local RE_ResetBattleUI     = Remotes:WaitForChild("ResetBattleUI")
 local RE_LocationChanged   = Remotes:WaitForChild("LocationChanged")
 
 local currentLocation = "Lobby"
-local matchActive = false
+local nextStartRequest = 0
+local startText = startBtn.Text
+
+local function updateStartButton()
+    local waiting = workspace:GetAttribute("GamePhase") == "WaitingForStart"
+    startBtn.Visible = currentLocation == "Battle" and waiting
+    startBtn.Text = if UnitLoadout.hasUnits(player:GetAttribute("DeckLoadout"))
+        then startText else "Equip a unit in the Lobby first"
+    if waiting or currentLocation ~= "Battle" then countFrame.Visible = false end
+end
 
 -- Animation pulse cho so dem nguoc
 local function pulseNumber(text, color, size)
@@ -35,8 +45,11 @@ local function pulseNumber(text, color, size)
     tween:Play()
 end
 
-startBtn.MouseButton1Click:Connect(function()
-    startBtn.Visible = false
+startBtn.Activated:Connect(function()
+    local now = os.clock()
+    if not startBtn.Visible or now < nextStartRequest then return end
+    if not UnitLoadout.hasUnits(player:GetAttribute("DeckLoadout")) then return end
+    nextStartRequest = now + 0.5
     RE_RequestStartMatch:FireServer()
 end)
 
@@ -56,33 +69,16 @@ RE_MatchCountdown.OnClientEvent:Connect(function(count)
 end)
 
 RE_MatchStarted.OnClientEvent:Connect(function()
-    matchActive = true
     startBtn.Visible = false
     countFrame.Visible = false
 end)
 
-RE_ResetBattleUI.OnClientEvent:Connect(function()
-    matchActive = false
-    countFrame.Visible = false
-    if currentLocation == "Battle" then
-        startBtn.Visible = true
-    else
-        startBtn.Visible = false
-    end
-end)
-
+RE_ResetBattleUI.OnClientEvent:Connect(updateStartButton)
+workspace:GetAttributeChangedSignal("GamePhase"):Connect(updateStartButton)
+player:GetAttributeChangedSignal("DeckLoadout"):Connect(updateStartButton)
 RE_LocationChanged.OnClientEvent:Connect(function(loc)
+    if loc ~= "Lobby" and loc ~= "Battle" then return end
     currentLocation = loc
-    if loc == "Battle" then
-        if not matchActive then
-            startBtn.Visible = true
-        else
-            startBtn.Visible = false
-        end
-    else
-        matchActive = false
-        startBtn.Visible = false
-        countFrame.Visible = false
-    end
+    updateStartButton()
 end)
-
+updateStartButton()

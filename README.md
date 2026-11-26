@@ -31,6 +31,16 @@ Hệ thống tiếp cận độ khó như một vòng điều khiển phản h�
 
 ---
 
+## Mã nguồn và kiểm thử
+
+Bản place nằm trong TowerDefense_DoAn.rbxl. Thư mục src chứa bản xuất mã để review và cập nhật. Hãy dùng [hướng dẫn đồng bộ Studio](docs/audit/ROBLOX_STUDIO_SETUP.md) và [báo cáo kiểm toán](docs/audit/PROJECT_AUDIT.md) để chọn script cần đồng bộ.
+
+Phase 2 bổ sung baseline thử nghiệm 15 wave cho Stone Path Ruin (The Void Act 3) và giữ cấu hình năm wave cho các Act hữu hạn còn lại. Chưa có kết quả nghiên cứu người chơi. Xem [nghiệm thu Phase 2](docs/audit/FINAL_ACCEPTANCE_REPORT.md) và [hướng dẫn telemetry](docs/audit/TELEMETRY_GUIDE.md).
+
+## Nghiệm thu và thực nghiệm
+
+Build đồng bộ hiện tại là `hero-limits-v2`, tối đa 4 IceHero, 4 CrimsonHero mỗi người và 50 trụ toàn trận. Log của build trước xác nhận Act 3 Fixed thắng đủ 15 wave và Boss có MaxHealth 3.200. Trước khi chốt release, còn cần đối chiếu bằng chứng DDA Act 3, giới hạn Hero trong Studio, mobile và đo hiệu năng. Mở bản sao RBXL, đồng bộ theo hướng dẫn Studio rồi Play Solo hoặc Start Server. [Báo cáo release](docs/audit/FINAL_RELEASE_REPORT.md) · [Hướng dẫn đồng bộ](docs/audit/STUDIO_SYNC_GUIDE.md) · [Quy trình thực nghiệm](docs/audit/EXPERIMENT_PROTOCOL.md)
+
 ## Thông tin tác giả
 
 - **Họ và tên:** Phùng Lê Thiên Vũ

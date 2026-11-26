@@ -9,11 +9,11 @@ local TweenService      = game:GetService("TweenService")
 
 local Towers  = ReplicatedStorage:WaitForChild("Towers")
 local VFX     = ReplicatedStorage:WaitForChild("VFX")
-local Enemies = ReplicatedStorage:WaitForChild("Enemies")
+local PlacementRules = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("PlacementRules"))
+local UnitLoadout = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("UnitLoadout"))
+local EnemyMover = require(ReplicatedStorage:WaitForChild("Modules"):WaitForChild("EnemyMover"))
 local Remotes = ReplicatedStorage:WaitForChild("Remotes")
 
--- PlaceUnit handled by UnitService
-local RE_Place = Remotes:WaitForChild("PlaceUnit")
 local RE_Cash   = Remotes:WaitForChild("UpdateCash")
 
 local function getOrMake(parent, cls, name)
@@ -21,38 +21,26 @@ local function getOrMake(parent, cls, name)
     if not obj then obj = Instance.new(cls); obj.Name = name; obj.Parent = parent end
     return obj
 end
+local RE_Place = getOrMake(Remotes, "RemoteEvent", "PlaceUnit")
+local RE_PlaceLegacy = getOrMake(Remotes, "RemoteEvent", "PlaceTower")
+local RE_PlacementResult = getOrMake(Remotes, "RemoteEvent", "PlacementResult")
+local EnemyFolder = workspace:WaitForChild("Enemies")
 local TowerFolder = getOrMake(workspace, "Folder", "Towers")
 local VFXFolder   = getOrMake(workspace, "Folder", "VFX")
+local studioHeroLog = RunService:IsStudio()
+if studioHeroLog then
+    local manager = script.Parent:FindFirstChild("GameManager")
+    print("[HeroLimit] Guard ready. BuildVersion=" .. tostring(manager and manager:GetAttribute("BuildVersion")))
+end
 
 ------------------------------------------------------------------------
 -- TOWER STATS
 ------------------------------------------------------------------------
-local TOWER_STATS = {
-    IceHero     = { price=500, range=22, damage=30,  attackRate=1.2,
-                    skillDamage=120, skillAoE=12, skillSlow=0.4, skillName="Glacial Burst" },
-    CrimsonHero = { price=800, range=22, damage=45,  attackRate=1.2,
-                    skillDamage=112, skillAoE=14, skillMult=2.5,  skillName="Crimson Slash" },
-}
+local TOWER_STATS = UnitLoadout.units
 
 ------------------------------------------------------------------------
 -- LEADERSTATS
 ------------------------------------------------------------------------
-Players.PlayerAdded:Connect(function(player)
-    local ls = player:FindFirstChild("leaderstats")
-    if not ls then
-        ls = Instance.new("Folder")
-        ls.Name = "leaderstats"
-        ls.Parent = player
-    end
-    local yen = ls:FindFirstChild("Yen")
-    if not yen then
-        yen = Instance.new("IntValue")
-        yen.Name = "Yen"
-        yen.Value = 2500
-        yen.Parent = ls
-    end
-end)
-
 local function getYen(player)
     local ls = player:FindFirstChild("leaderstats")
     return ls and ls:FindFirstChild("Yen")
@@ -64,88 +52,19 @@ local function spendYen(p, n) local y = getYen(p); if y and y.Value >= n then y.
 -- ENEMY VALIDATOR & FINDERS (Tuyet doi khong target nguoi choi hay tower)
 ------------------------------------------------------------------------
 local function isEnemy(model)
-    if not model or not model:IsA("Model") then return false end
-
-    -- 1. Khong bao gio target nguoi choi (Player)
-    if Players:GetPlayerFromCharacter(model) then
+    local matchId = workspace:GetAttribute("DeckMatchId")
+    if not matchId or model.Parent ~= EnemyFolder or not model:IsA("Model") or model:GetAttribute("DeckMatchId") ~= matchId then
         return false
     end
-
-    -- 2. Khong target bat ky Tower nao hoac chinh no
-    if model.Parent == TowerFolder or model:IsDescendantOf(TowerFolder) then
-        return false
-    end
-    if model.Name == "Towers" or model.Name:find("Hero") then
-        return false
-    end
-
-    -- 3. Khong target cac folder khac nhu VFX
-    if model.Parent == VFXFolder or model:IsDescendantOf(VFXFolder) then
-        return false
-    end
-
-    -- 4. Phai co Humanoid con song va RootPart hop le
-    local h = model:FindFirstChild("Zombie") or model:FindFirstChildOfClass("Humanoid")
-    local hrp = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
-    if not (h and h.Health > 0 and hrp) then
-        return false
-    end
-
-    -- 5. Kiem tra xem co thuoc danh sach Enemy hay khong
-    local enemiesFolder = workspace:FindFirstChild("Enemies")
-    if enemiesFolder and model:IsDescendantOf(enemiesFolder) then
-        return true
-    end
-
-    local nameLower = model.Name:lower()
-    if nameLower:find("zombie") or nameLower:find("enemy") or model:FindFirstChild("Zombie") then
-        return true
-    end
-
-    return false
-end
-
-local function findNearest(pos, range)
-    local best, bestD = nil, range + 1
-    local enemiesFolder = workspace:FindFirstChild("Enemies")
-    local searchContainers = enemiesFolder and { enemiesFolder } or { workspace }
-    local checked = {}
-
-    for _, container in ipairs(searchContainers) do
-        if container then
-            for _, e in ipairs(container:GetChildren()) do
-                if not checked[e] and isEnemy(e) then
-                    checked[e] = true
-                    local hrp = e:FindFirstChild("HumanoidRootPart") or e.PrimaryPart
-                    local d = (hrp.Position - pos).Magnitude
-                    if d <= range and d < bestD then
-                        best = e
-                        bestD = d
-                    end
-                end
-            end
-        end
-    end
-    return best
+    local humanoid = model:FindFirstChildOfClass("Humanoid")
+    return humanoid and humanoid.Health > 0 and model.PrimaryPart ~= nil
 end
 
 local function findInRadius(pos, radius)
     local found = {}
-    local enemiesFolder = workspace:FindFirstChild("Enemies")
-    local searchContainers = enemiesFolder and { enemiesFolder } or { workspace }
-    local checked = {}
-
-    for _, container in ipairs(searchContainers) do
-        if container then
-            for _, e in ipairs(container:GetChildren()) do
-                if not checked[e] and isEnemy(e) then
-                    checked[e] = true
-                    local hrp = e:FindFirstChild("HumanoidRootPart") or e.PrimaryPart
-                    if (hrp.Position - pos).Magnitude <= radius then
-                        table.insert(found, e)
-                    end
-                end
-            end
+    for _, enemy in ipairs(EnemyFolder:GetChildren()) do
+        if isEnemy(enemy) and (enemy.PrimaryPart.Position - pos).Magnitude <= radius then
+            table.insert(found, enemy)
         end
     end
     return found
@@ -153,7 +72,7 @@ end
 
 local function dealDamage(enemy, dmg)
     if not isEnemy(enemy) then return end
-    local h = enemy:FindFirstChild("Zombie") or enemy:FindFirstChildOfClass("Humanoid")
+    local h = enemy:FindFirstChildOfClass("Humanoid")
     if h and h.Health > 0 then h:TakeDamage(dmg) end
 end
 
@@ -520,6 +439,7 @@ local function doIceSkill(towerModel, towerRoot, target, stats)
     showSkillLabel(towerModel, stats.skillName, Color3.fromRGB(80, 200, 255))
 
     task.spawn(playIceSkill, towerModel, function()
+        if towerModel.Parent ~= TowerFolder or towerModel:GetAttribute("DeckMatchId") ~= workspace:GetAttribute("DeckMatchId") then return end
         if targetHRP.Parent then
             tPos = targetHRP.Position
             local newDir = Vector3.new(tPos.X - origin.X, 0, tPos.Z - origin.Z)
@@ -532,12 +452,8 @@ local function doIceSkill(towerModel, towerRoot, target, stats)
         for _, enemy in ipairs(findInRadius(tPos, stats.skillAoE)) do
             if isEnemy(enemy) then
                 dealDamage(enemy, stats.skillDamage)
-                local h = enemy:FindFirstChild("Zombie") or enemy:FindFirstChildOfClass("Humanoid")
-                if h then
-                    local orig = h.WalkSpeed
-                    h.WalkSpeed = orig * stats.skillSlow
-                    task.delay(3, function() if h and h.Parent then h.WalkSpeed = orig end end)
-                end
+                enemy:SetAttribute("SlowFactor", stats.skillSlow)
+                enemy:SetAttribute("SlowUntil", os.clock() + 3)
             end
         end
     end)
@@ -560,6 +476,7 @@ local function doCrimsonSkill(towerModel, towerRoot, target, stats)
     showSkillLabel(towerModel, stats.skillName, Color3.fromRGB(200, 50, 255))
 
     task.spawn(playCrimsonSkill, towerModel, function()
+        if towerModel.Parent ~= TowerFolder or towerModel:GetAttribute("DeckMatchId") ~= workspace:GetAttribute("DeckMatchId") then return end
         if targetHRP.Parent then
             tPos = targetHRP.Position
             local newDir = Vector3.new(tPos.X - origin.X, 0, tPos.Z - origin.Z)
@@ -605,42 +522,23 @@ local function setupTowerParts(towerModel)
 end
 
 local function findTargetByMode(pos, range, mode)
-    local enemiesFolder = workspace:FindFirstChild("Enemies")
-    local searchContainers = enemiesFolder and { enemiesFolder } or { workspace }
-    local candidates = {}
-
-    for _, container in ipairs(searchContainers) do
-        if container then
-            for _, e in ipairs(container:GetChildren()) do
-                if isEnemy(e) then
-                    local hrp = e:FindFirstChild("HumanoidRootPart") or e.PrimaryPart
-                    if hrp then
-                        local d = (hrp.Position - pos).Magnitude
-                        if d <= range then
-                            local h = e:FindFirstChild("Zombie") or e:FindFirstChildOfClass("Humanoid")
-                            table.insert(candidates, { enemy = e, dist = d, hp = h and h.Health or 0, hrp = hrp })
-                        end
-                    end
+    local best, bestScore
+    for _, enemy in ipairs(EnemyFolder:GetChildren()) do
+        if isEnemy(enemy) then
+            local distance = (enemy.PrimaryPart.Position - pos).Magnitude
+            if distance <= range then
+                local score = -distance
+                if mode == "Strongest" then
+                    score = enemy:FindFirstChildOfClass("Humanoid").Health
+                elseif mode == "First" or mode == "Last" then
+                    local _, progress = EnemyMover.GetProgress(enemy)
+                    score = if mode == "First" then progress else -progress
                 end
+                if not bestScore or score > bestScore then best, bestScore = enemy, score end
             end
         end
     end
-
-    if #candidates == 0 then return nil end
-
-    mode = mode or "First"
-    if mode == "First" then
-        return candidates[1].enemy
-    elseif mode == "Last" then
-        return candidates[#candidates].enemy
-    elseif mode == "Strongest" then
-        table.sort(candidates, function(a, b) return a.hp > b.hp end)
-        return candidates[1].enemy
-    elseif mode == "Closest" then
-        table.sort(candidates, function(a, b) return a.dist < b.dist end)
-        return candidates[1].enemy
-    end
-    return candidates[1].enemy
+    return best
 end
 
 ------------------------------------------------------------------------
@@ -653,9 +551,10 @@ local function startCombatLoop(towerModel, unitName)
     local towerRoot = towerModel:FindFirstChild("HumanoidRootPart")
     if not towerRoot then return end
 
-    local lastAttack = 0
-    local lastSkill  = 0
+    local lastAttack = -math.huge
+    local lastSkill = -math.huge
     local SKILL_CD   = 5
+    local nextScan = 0
 
     local conn
     conn = RunService.Heartbeat:Connect(function()
@@ -668,7 +567,9 @@ local function startCombatLoop(towerModel, unitName)
         local curSPA   = towerModel:GetAttribute("SPA") or stats.attackRate
         local curMode  = towerModel:GetAttribute("TargetMode") or "First"
 
-        local now    = tick()
+        local now = os.clock()
+        if now < nextScan or workspace:GetAttribute("GamePhase") ~= "WaveActive" then return end
+        nextScan = now + 0.1
         local target = findTargetByMode(towerRoot.Position, curRange, curMode)
         if not target then return end
 
@@ -703,58 +604,63 @@ end
 ------------------------------------------------------------------------
 -- SERVER: NHAN LENH DAT TOWER (ANTI-OVERLAP < 5 STUDS)
 ------------------------------------------------------------------------
-RE_Place.OnServerEvent:Connect(function(player, unitName, placeCFrame)
-    if not _G.BattleActive then
-        warn(string.format("[TowerServer] %s rejected: Match has not started yet (press Start first)", player.Name))
-        return
-    end
+local requestTimes = {}
 
+local function mayAct(player, action, interval)
+    local matchId = workspace:GetAttribute("DeckMatchId")
+    local phase = workspace:GetAttribute("GamePhase")
+    local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+    if not PlacementRules.canAct(matchId, player:GetAttribute("DeckMatchId"), phase,
+        root and root:IsA("BasePart") and root.Position or nil) then return false end
+    local times = requestTimes[player]
+    if not times then times = {}; requestTimes[player] = times end
+    local now = os.clock()
+    if times[action] and now - times[action] < interval then return false end
+    times[action] = now
+    return true
+end
+
+Players.PlayerRemoving:Connect(function(player)
+    requestTimes[player] = nil
+end)
+
+local function tryPlaceTower(player, unitName, placeCFrame)
+    if not mayAct(player, "Place", 0.20) then return "Unavailable" end
+    if typeof(unitName) ~= "string" or typeof(placeCFrame) ~= "CFrame" then return "Invalid" end
+    for _, component in ipairs({placeCFrame:GetComponents()}) do
+        if component ~= component or math.abs(component) == math.huge then return "Invalid" end
+    end
     local stats = TOWER_STATS[unitName]
-    if not stats then warn("[TowerServer] Unknown unit: "..tostring(unitName)); return end
-
-    local flatTarget = Vector3.new(placeCFrame.Position.X, 0, placeCFrame.Position.Z)
-    local flatBattle = Vector3.new(700, 0, -490)
-    if (flatTarget - flatBattle).Magnitude > 180 then
-        warn(string.format("[TowerServer] %s rejected: cannot place tower in Lobby", player.Name))
-        return
-    end
-
-    -- 1. Anti-overlap kiem tra voi tat ca Tower da dat (< 5 studs)
-    for _, existingTower in ipairs(TowerFolder:GetChildren()) do
-        if existingTower:IsA("Model") then
-            local otherRoot = existingTower:FindFirstChild("HumanoidRootPart") or existingTower.PrimaryPart
-            if otherRoot then
-                local otherFlat = Vector3.new(otherRoot.Position.X, 0, otherRoot.Position.Z)
-                if (flatTarget - otherFlat).Magnitude < 5 then
-                    warn(string.format("[TowerServer] %s rejected: too close to existing tower (< 5 studs)", player.Name))
-                    return
-                end
-            end
+    if not stats then return "Invalid" end
+    if not UnitLoadout.contains(player:GetAttribute("DeckMatchLoadout"), unitName) then return "NotEquipped" end
+    -- Keep validation, debit and publication synchronous across both placement remotes.
+    local matchId = workspace:GetAttribute("DeckMatchId")
+    local counts, total = PlacementRules.countHeroes(TowerFolder, player.UserId, matchId)
+    local limitReason = PlacementRules.heroLimitReason(unitName, counts, total)
+    if limitReason then
+        if studioHeroLog then
+            local balance = getYen(player)
+            print(string.format("[HeroLimit] REJECTED: %s limit reached | Owner=%s DeckMatchId=%s Count=%d Yen=%s",
+                unitName, tostring(player.UserId), matchId, counts[unitName] or 0,
+                tostring(balance and balance.Value)))
         end
+        return limitReason
     end
-
-    -- 2. Anti-overlap voi Waypoints (< 5 studs)
-    local waypointsFolder = workspace:FindFirstChild("Waypoints")
-    if waypointsFolder then
-        for _, wp in ipairs(waypointsFolder:GetChildren()) do
-            if wp:IsA("BasePart") then
-                local wpFlat = Vector3.new(wp.Position.X, 0, wp.Position.Z)
-                if (flatTarget - wpFlat).Magnitude < 5 then
-                    warn(string.format("[TowerServer] %s rejected: too close to waypoint path (< 5 studs)", player.Name))
-                    return
-                end
-            end
-        end
-    end
-
-    -- 3. Kiem tra va tru tien
-    if not spendYen(player, stats.price) then
-        warn("[TowerServer] "..player.Name.." khong du tien")
-        return
-    end
+    local position = placeCFrame.Position
+    local reason = PlacementRules.geometry(workspace, position, TowerFolder)
+    if reason then return reason end
+    local excluded = {player.Character, TowerFolder, EnemyFolder, VFXFolder}
+    local waypoints = workspace:FindFirstChild("Waypoints")
+    if waypoints then table.insert(excluded, waypoints) end
+    local ground = PlacementRules.findGround(workspace, position, excluded)
+    if not ground then return "Ground" end
+    local look = placeCFrame.LookVector
+    local yaw = math.atan2(-look.X, -look.Z)
 
     local template = Towers:FindFirstChild(unitName)
-    if not template then addYen(player, stats.price); return end
+    if not PlacementRules.validTemplate(template) then return "Invalid" end
+    local yen = getYen(player)
+    if not yen or yen.Value < stats.price then return "Cash" end
 
     local clone = template:Clone()
     clone.Name = unitName .. "_" .. player.Name
@@ -763,12 +669,12 @@ RE_Place.OnServerEvent:Connect(function(player, unitName, placeCFrame)
         if s:IsA("Script") or s:IsA("LocalScript") then s:Destroy() end
     end
 
-    clone:PivotTo(placeCFrame)
-    clone.Parent = TowerFolder
+    clone:PivotTo(CFrame.new(ground) * CFrame.Angles(0, yaw, 0))
     setupTowerParts(clone)
 
     -- Set dynamic attributes for Inspector UI and Combat Loop
     clone:SetAttribute("Owner", player.UserId)
+    clone:SetAttribute("DeckMatchId", matchId)
     clone:SetAttribute("UnitType", unitName)
     clone:SetAttribute("Level", 0)
     clone:SetAttribute("MaxLevel", 8)
@@ -782,9 +688,37 @@ RE_Place.OnServerEvent:Connect(function(player, unitName, placeCFrame)
     clone:SetAttribute("AttackType", (stats.skillAoE and stats.skillAoE > 0) and "Circle AOE" or "Single Target")
     clone:SetAttribute("SkillName", stats.skillName or "None")
 
+    if not spendYen(player, stats.price) then clone:Destroy(); return "Cash" end
+    clone.Parent = TowerFolder
     print(string.format("[TowerServer] %s placed %s (-%d¥) at %s", player.Name, unitName, stats.price, tostring(placeCFrame.Position)))
+    if studioHeroLog then
+        print(string.format("[HeroLimit] %s: %d/%d | Owner=%s UnitType=%s DeckMatchId=%s Yen=%d",
+            unitName, (counts[unitName] or 0) + 1, PlacementRules.heroLimit(unitName),
+            tostring(clone:GetAttribute("Owner")), clone:GetAttribute("UnitType"), clone:GetAttribute("DeckMatchId"), yen.Value))
+    end
     task.spawn(startCombatLoop, clone, unitName)
-end)
+    return "Placed"
+end
+
+local lastReplyAt = {}
+Players.PlayerRemoving:Connect(function(player) lastReplyAt[player] = nil end)
+
+local function placeTower(player, unitName, placeCFrame, requestId, requestMatchId)
+    if requestId == nil then
+        tryPlaceTower(player, unitName, placeCFrame)
+        return
+    end
+    if typeof(requestId) ~= "number" or requestId < 1 or requestId > 2147483647 or requestId % 1 ~= 0 then return end
+    local reason = if typeof(requestMatchId) == "string" and requestMatchId == workspace:GetAttribute("DeckMatchId")
+        then tryPlaceTower(player, unitName, placeCFrame) else "Unavailable"
+    local now = os.clock()
+    if reason ~= "Placed" and now - (lastReplyAt[player] or -math.huge) < 0.20 then return end
+    lastReplyAt[player] = now
+    RE_PlacementResult:FireClient(player, requestId, reason)
+end
+
+RE_Place.OnServerEvent:Connect(placeTower)
+RE_PlaceLegacy.OnServerEvent:Connect(placeTower)
 
 ------------------------------------------------------------------------
 -- UPGRADE / SELL / TARGET MODE REMOTES
@@ -817,8 +751,9 @@ local function getUpgradeCost(unitName, currentLevel)
 end
 
 RE_Upgrade.OnServerEvent:Connect(function(player, towerModel)
-    if not towerModel or not towerModel.Parent or towerModel.Parent ~= TowerFolder then return end
-    if towerModel:GetAttribute("Owner") ~= player.UserId then return end
+    if not mayAct(player, "Upgrade", 0.2) then return end
+    if typeof(towerModel) ~= "Instance" or not towerModel:IsA("Model") or towerModel.Parent ~= TowerFolder then return end
+    if towerModel:GetAttribute("Owner") ~= player.UserId or towerModel:GetAttribute("DeckMatchId") ~= workspace:GetAttribute("DeckMatchId") then return end
 
     local currentLvl = towerModel:GetAttribute("Level") or 0
     local maxLvl = towerModel:GetAttribute("MaxLevel") or 8
@@ -849,8 +784,9 @@ RE_Upgrade.OnServerEvent:Connect(function(player, towerModel)
 end)
 
 RE_Sell.OnServerEvent:Connect(function(player, towerModel)
-    if not towerModel or not towerModel.Parent or towerModel.Parent ~= TowerFolder then return end
-    if towerModel:GetAttribute("Owner") ~= player.UserId then return end
+    if not mayAct(player, "Sell", 0.25) then return end
+    if typeof(towerModel) ~= "Instance" or not towerModel:IsA("Model") or towerModel.Parent ~= TowerFolder then return end
+    if towerModel:GetAttribute("Owner") ~= player.UserId or towerModel:GetAttribute("DeckMatchId") ~= workspace:GetAttribute("DeckMatchId") then return end
 
     local invested = towerModel:GetAttribute("InvestedCash") or 500
     local refund = math.floor(invested * 0.7)
@@ -860,11 +796,12 @@ RE_Sell.OnServerEvent:Connect(function(player, towerModel)
 end)
 
 RE_SetTargetMode.OnServerEvent:Connect(function(player, towerModel, mode)
-    if not towerModel or not towerModel.Parent or towerModel.Parent ~= TowerFolder then return end
-    if towerModel:GetAttribute("Owner") ~= player.UserId then return end
+    if not mayAct(player, "Target", 0.15) then return end
+    if typeof(towerModel) ~= "Instance" or not towerModel:IsA("Model") or towerModel.Parent ~= TowerFolder then return end
+    if towerModel:GetAttribute("Owner") ~= player.UserId or towerModel:GetAttribute("DeckMatchId") ~= workspace:GetAttribute("DeckMatchId") then return end
 
     local validModes = { First = true, Last = true, Strongest = true, Closest = true }
-    if validModes[mode] then
+    if typeof(mode) == "string" and validModes[mode] then
         towerModel:SetAttribute("TargetMode", mode)
     end
 end)

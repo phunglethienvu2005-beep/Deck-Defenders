@@ -1,3 +1,7 @@
 *.lock
 *.rbxl.lock
 .user_uploaded/
+
+# Rebuild with node tools/generate-studio-sync.mjs
+/tools/generated/
+/reports/local/
