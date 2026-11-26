@@ -1,0 +1,19 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm install --prefix "$RUNNER_TEMP/luau" --no-save --ignore-scripts --no-audit --no-fund luau-web@1.4.0
+      - run: node tests/run-luau.mjs "$RUNNER_TEMP/luau/node_modules/luau-web/src/index.js"
+      - run: node --test tests/telemetry.test.mjs tests/studio-sync.test.mjs
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t deck-defenders-test .
+      - run: docker run --rm deck-defenders-test
