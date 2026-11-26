@@ -37,6 +37,17 @@ Bản place nằm trong TowerDefense_DoAn.rbxl. Thư mục src chứa bản xu�
 
 Phase 2 bổ sung baseline thử nghiệm 15 wave cho Stone Path Ruin (The Void Act 3) và giữ cấu hình năm wave cho các Act hữu hạn còn lại. Chưa có kết quả nghiên cứu người chơi. Xem [nghiệm thu Phase 2](docs/audit/FINAL_ACCEPTANCE_REPORT.md) và [hướng dẫn telemetry](docs/audit/TELEMETRY_GUIDE.md).
 
+### Chạy kiểm thử bằng Docker
+
+Container chạy bộ kiểm thử tự động (biên dịch Luau, spec DDA, đặt trụ, loadout, dash, telemetry, studio-sync). Bản place `.rbxl` vẫn chạy trong Roblox Studio.
+
+```bash
+docker build -t deck-defenders-test .
+docker run --rm deck-defenders-test
+```
+
+GitHub Actions chạy cùng bộ kiểm thử và bước docker build/run ở mỗi lần push (`.github/workflows/ci.yml`).
+
 ## Nghiệm thu và thực nghiệm
 
 Build đồng bộ hiện tại là `hero-limits-v2`, tối đa 4 IceHero, 4 CrimsonHero mỗi người và 50 trụ toàn trận. Log của build trước xác nhận Act 3 Fixed thắng đủ 15 wave và Boss có MaxHealth 3.200. Trước khi chốt release, còn cần đối chiếu bằng chứng DDA Act 3, giới hạn Hero trong Studio, mobile và đo hiệu năng. Mở bản sao RBXL, đồng bộ theo hướng dẫn Studio rồi Play Solo hoặc Start Server. [Báo cáo release](docs/audit/FINAL_RELEASE_REPORT.md) · [Hướng dẫn đồng bộ](docs/audit/STUDIO_SYNC_GUIDE.md) · [Quy trình thực nghiệm](docs/audit/EXPERIMENT_PROTOCOL.md)
